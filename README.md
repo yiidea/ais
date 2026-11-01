@@ -74,6 +74,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 |---|---|
 | [docs/chatgpt/01-overview.md](docs/chatgpt/01-overview.md) | **主设计文档**：二十章完整方案（设计目标、架构、对象模型、Intent DAG、硬件直通存储、索引、执行、事务、持久化、Memory、安全边界、分布式、API、代码组织、数据结构、实施路线、Benchmark、架构问题） |
 | [docs/chatgpt/02-kernel.md](docs/chatgpt/02-kernel.md) | **核心存储内核深入设计**：Object / Extent / Physical Block 三层组织、DRAM/NVMe/GPU HBM 统一资源管理与迁移、Object Version / MVCC / WAL / Checkpoint 一致性 |
+| [docs/chatgpt/03-consistency-kernel.md](docs/chatgpt/03-consistency-kernel.md) | **一致性协议与崩溃恢复**：WAL 二进制格式、锁分层、内存状态机、Checkpoint / Recovery 算法、迁移提交点、GC 四条件判定、故障注入矩阵 |
 
 ### 补充架构文档（本仓库新增，供实现落地）
 

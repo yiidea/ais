@@ -1,4 +1,10 @@
-# AI-Native Storage Engine 设计方案
+# AI-Native Storage Engine 设计方案（总览与架构）
+
+> 项目代号：**AINS**（AI-Native Intelligent Storage）
+>
+> 核心设计思想：让 AI 成为数据访问和数据操作的主要入口，让存储引擎成为直接面向 AI 工作负载和底层硬件的执行系统。
+>
+> 状态：设计阶段 · 对应实现蓝图见 [docs/architecture](../architecture/01-overview.md) 与 [ADR](../adr/)
 
 项目代号：AINS（AI-Native Intelligent Storage）
 
@@ -23,15 +29,11 @@ AI 负责理解用户意图、数据语义、任务规划和执行策略；存�
 
 AI 负责决策，存储引擎负责执行，硬件负责加速。
 
-# 一、重新定义数据库：从 SQL Database 到 AI Storage System
+## 一、重新定义数据库：从 SQL Database 到 AI Storage System
 
 ## 1.1 传统数据库的设计模型
 
 传统数据库的架构主要围绕关系模型设计：
-
-[Its all about Database: SQL Server Architecture Diagram](https://images.openai.com/static-rsc-4/MivBWHUsBEGWpeXnhg23wq5MXtPiFTXaOfqM_g8vYTk6dG6-KLENS3wb1Lhdk71kGo9l0uEyj3PUusuSQKZWBjaP6ee93IKSZ_JM8p7quBILyTZuF04_WfeIYwPwnRRJB6hXBzU86ZTPVt49i2J6VKssWJxSL2CuBcdQwOrCLxs?purpose=inline)
-
-[clotat.blogspot.com](https://clotat.blogspot.com/2020/09/sql-server-architecture-diagram.html?utm_source=chatgpt.com)
 
 典型执行流程：
 
@@ -116,7 +118,7 @@ AI 系统的数据访问不只是传统的增删改查。
 4. Hardware-Native Storage：存储引擎直接感知硬件资源，减少不必要的软件抽象。
 5. AI-Native Optimization：利用 AI 工作负载特征和历史运行信息优化数据布局、缓存、索引和执行计划。
 
-# 二、整体系统架构
+## 二、整体系统架构
 
 ## 2.1 总体架构
 
@@ -129,13 +131,56 @@ AI 系统的数据访问不只是传统的增删改查。
 5. Hardware-Aware Storage Layer
 6. Hardware Abstraction Layer
 
-[联想研究院](https://images.openai.com/static-rsc-4/vIS4CGpJ4vDB0Dpy2-kc4ZlzmcWeZ_bF165ZmnYvh4Ei7u-S3-Q_3wJ1bTFzSfoF4j0776sRK3povrnjC_a1WS3wccPsj4dPTkfKqDDnXUYfVNN48hfwKYitliGiqbiY8YvMoawUIdJj8DEhMMEkYP61rGa98YbfBYoXKPIYMt4?purpose=inline)
-
-[research.lenovo.com](https://research.lenovo.com/webapp/view/ResearchNews.html?id=1282\&type=1\&utm_source=chatgpt.com)
-
 架构关系如下：
 
-\#chatgpt-mermaid-\_r_an9\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_an9\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_an9\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_an9\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_an9\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_an9\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_an9\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_an9\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_an9\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_an9\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_an9\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_an9\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_an9\_ p{margin:0;}#chatgpt-mermaid-\_r_an9\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_an9\_ .label text,#chatgpt-mermaid-\_r_an9\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ .node rect,#chatgpt-mermaid-\_r_an9\_ .node circle,#chatgpt-mermaid-\_r_an9\_ .node ellipse,#chatgpt-mermaid-\_r_an9\_ .node polygon,#chatgpt-mermaid-\_r_an9\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ .rough-node .label text,#chatgpt-mermaid-\_r_an9\_ .node .label text,#chatgpt-mermaid-\_r_an9\_ .image-shape .label,#chatgpt-mermaid-\_r_an9\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_an9\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ .rough-node .label,#chatgpt-mermaid-\_r_an9\_ .node .label,#chatgpt-mermaid-\_r_an9\_ .image-shape .label,#chatgpt-mermaid-\_r_an9\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_an9\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_an9\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_an9\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_an9\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_an9\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_an9\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_an9\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_an9\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_an9\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_an9\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_an9\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_an9\_ .icon-shape,#chatgpt-mermaid-\_r_an9\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_an9\_ .icon-shape p,#chatgpt-mermaid-\_r_an9\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_an9\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_an9\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_an9\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_an9\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_an9\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_an9\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_an9\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_an9\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_an9\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_an9\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_an9\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_an9\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_an9\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_an9\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_an9\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_an9\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ .node rect,#chatgpt-mermaid-\_r_an9\_ .node circle,#chatgpt-mermaid-\_r_an9\_ .node ellipse,#chatgpt-mermaid-\_r_an9\_ .node polygon,#chatgpt-mermaid-\_r_an9\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_an9\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_an9\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_an9\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_an9\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_an9\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}6. Hardware Abstraction Layer5. Hardware-Aware Storage Layer4. Execution Engine Layer3. Semantic Data Layer2. AI Intelligence Layer1. AI Interface LayerCPU / NUMADRAM / CXLGPU / HBMNVMe / SSDRDMA / NetworkAdaptive Data LayoutMulti-Modal IndexWAL & RecoveryCompaction & GCDirect I/O EngineTask DAG SchedulerRetrieval EngineStreaming EngineBatch EngineTransaction ManagerCache ManagerContext StoreMemory StoreVector StoreTensor StoreGraph StoreObject StoreMetadata & SchemaSemantic UnderstandingIntent PlannerReasoning EnginePolicy & PermissionWorkload LearningAI APINatural Language InterfaceAI SDKAgent Tool InterfaceAI Agent / User / Application
+```mermaid
+flowchart TB
+    subgraph L1["1 · AI Interface Layer"]
+        L1A["NL API / Intent API / Object API"]
+        L1B["SDK · Workflow API · Agent Tool Interface"]
+    end
+    subgraph L2["2 · AI Intelligence Layer"]
+        L2A["Semantic Understanding"]
+        L2B["Intent Planner"]
+        L2C["Reasoning Engine"]
+        L2D["Policy & Permission"]
+        L2E["Workload Learning"]
+    end
+    subgraph L3["3 · Semantic Data Layer"]
+        L3A["Object Store"]
+        L3B["Context Store"]
+        L3C["Memory Store"]
+        L3D["Vector Store"]
+        L3E["Tensor Store"]
+        L3F["Graph Store"]
+        L3G["Metadata & Schema"]
+    end
+    subgraph L4["4 · Execution Engine Layer"]
+        L4A["Task DAG Scheduler"]
+        L4B["Retrieval Engine"]
+        L4C["Streaming Engine"]
+        L4D["Batch Engine"]
+        L4E["Transaction Manager"]
+        L4F["Cache Manager"]
+    end
+    subgraph L5["5 · Hardware-Aware Storage Layer"]
+        L5A["Adaptive Data Layout"]
+        L5B["Multi-Modal Index"]
+        L5C["Direct I/O Engine"]
+        L5D["WAL & Recovery"]
+        L5E["Compaction & GC"]
+    end
+    subgraph L6["6 · Hardware Abstraction Layer"]
+        L6A["CPU / NUMA"]
+        L6B["DRAM / CXL"]
+        L6C["GPU / HBM"]
+        L6D["NVMe / SSD"]
+        L6E["RDMA / Network"]
+    end
+    USER(["AI Agent / User / Application"])
+    USER --> L1
+    L1 --> L2 --> L3 --> L4 --> L5 --> L6
+```
 
 这里有一个值得强调的设计：
 
@@ -211,7 +256,7 @@ AI 更适合参与：
 
 而普通数据读取、索引访问、事务管理和 I/O 调度必须由确定性内核完成。
 
-# 三、重新设计数据模型：不再以 Table 为中心
+## 三、重新设计数据模型：不再以 Table 为中心
 
 这是整个系统最重要的设计之一。
 
@@ -223,45 +268,31 @@ AI 更适合参与：
 
 建议引入七种核心数据对象。
 
-[深入解析t-SNE中的困惑度参数与KL散度优化梯度推导-腾讯云开发者社区-腾讯云](https://images.openai.com/static-rsc-4/RY8NMT_AIbakCWvaFOiGODW6tAqwr---wGhxYPm_wHW4EGdSASaZKvrwxDMbQ818taNiNCQz4Ac4FvthtDyvEg1-Eyf9q3vcs0JT6nnzNiEIEHDPzwB45rNwa3oEK4r9Iyq256-3H2fH3v_l5UHs6dBpe9A-xEvUX_S6PaG7F6w?purpose=inline)
-
-1\. Vector Object
+1. Vector Object
 
 Embedding、语义特征、向量索引、相似度关系。
 
-[Data to App, Fast - Memex](https://images.openai.com/static-rsc-4/3ydBEL6g2l7eS98OXj0kjFrDTRX4hLWZskXkJmi9DLf2aMf214283cweBe6gkBsV1-4uCI6vU8JCGsq19Vr2HnTFkYoDVqvTzLdhQ9JcuUbFyFYljoh_sk0qsmrWWD1DmWM23YtHxiPKG4Ch1Z27OA_8zlinC3WuGMos1h0N9r4?purpose=inline)
-
-2\. Graph Object
+2. Graph Object
 
 实体、关系、路径、依赖关系和知识网络。
 
-[Python Pandas: Turning Raw Data into Meaningful Insights | by S.M Zahidul Islam | Medium](https://images.openai.com/static-rsc-4/dmGrR8FLAd40198TfiTKoFA8MTld2VIwxx9MBLkXwk5dmMgbTuHm5ees6CdJxbhtZong93p9NSty3Xxa706x3NVswIgm16zGx2P4qMQNxBbIrsNfVqKue7pVnxBUG6v-FnsDCrBZfP_090wUO8Dvz45LvsdorgGT-IP1rLul3z8?purpose=inline)
-
-3\. Tensor Object
+3. Tensor Object
 
 模型权重、张量、矩阵、训练数据、推理中间结果。
 
-[The Evolution from Record Keeping to Intelligent Information Management](https://images.openai.com/static-rsc-4/t9S0wmr9MIT9rC7arnnbmkuxhyJQdQEaM36acuQgZsZs05ulmN-4tTt6ycsgtErz-WXwN53f9hbXnpPsczFkI_Ip_fgKMIiC9QlE_t1_zFm88QWa0PB7ZEOYgDO4RWP4QksFSF0ql-NoriPocBe8UY9AhYNDiorKrfzaHRbeV9Q?purpose=inline)
-
-4\. Document Object
+4. Document Object
 
 文档、文本、代码、结构化和半结构化内容。
 
-[Building a Second Brain the Andrej Karpathy Way: LLMs and Markdown | BrainMap](https://images.openai.com/static-rsc-4/3RI27XzDdpAIEhaevQ6ovUMsjrOoOI1NY0suvCmAuC-CKNxuprkdOZaROC5MhOKXxJYDAiiLntpt4ihXTSrhMNGWxzGNgigdqdL3EHeb1Q23KgA4Uz3YDMZ4D-HtvYtEtNNiNHyY_EDbVrJrmJ_xWvIi7M8nX4I1ZvniNOdS4v4?purpose=inline)
-
-5\. Memory Object
+5. Memory Object
 
 短期记忆、长期记忆、经验、事件和上下文。
 
-[Pika MCP: Model Context Protocol Integration Guide](https://images.openai.com/static-rsc-4/E1CLNcACyUMmJqG2SPLR_AP5wkTEaR8a5qVu7o_4ffIYzVfF1kpstEBRH2rpAuAAHDNHuD4WOHZFrQwN7Ae7_00pUkHMAOZEk8WOegQ_u-Vv8m9R4f-YallU7tjQTEXUAvdrHbTvMpENAWOss-hwkiLR7YCfDDOHKn5f_RtGcCc?purpose=inline)
-
-6\. Media Object
+6. Media Object
 
 图片、视频、音频、3D 数据及多模态内容。
 
-[How Spring Boot Works Internally: Auto-Configuration Explained (Simple & Visual) | by Amit Kandalkar | Medium](https://images.openai.com/static-rsc-4/JGuRZs_XwYadJfHRklGXVg9rcYbqI4Cs8u1rFzhSjVOYBvUKH_4nLjFFqJIbtCeiRgTf7ItCMCjBvh95WAQpmcJjzd76WmGdKxJcm8Wuk6oEw5CYxdQmkTvOgvGkAgK6Xhnh7YSY1Xqofs8qZ876TEhFPIa-W3DpHOKHMs65fl0?purpose=inline)
-
-7\. Event Object
+7. Event Object
 
 事件、操作记录、任务状态、时间序列和执行历史。
 
@@ -400,7 +431,7 @@ Physical Extent
 - 冷数据放入 HDD。
 - 需要 GPU 批量读取的数据采用适合 GPU 的连续布局。
 
-# 四、AI 不再生成 SQL，而是生成 Intent DAG
+## 四、AI 不再生成 SQL，而是生成 Intent DAG
 
 ## 4.1 为什么不能简单地用自然语言直接访问数据
 
@@ -443,7 +474,17 @@ Intent Intermediate Representation（IIR）
 
 AI 将自然语言转化为一个有向无环任务图。
 
-\#chatgpt-mermaid-\_r_aqc\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_aqc\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_aqc\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_aqc\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_aqc\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_aqc\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_aqc\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_aqc\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_aqc\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_aqc\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqc\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqc\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_aqc\_ p{margin:0;}#chatgpt-mermaid-\_r_aqc\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_aqc\_ .label text,#chatgpt-mermaid-\_r_aqc\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ .node rect,#chatgpt-mermaid-\_r_aqc\_ .node circle,#chatgpt-mermaid-\_r_aqc\_ .node ellipse,#chatgpt-mermaid-\_r_aqc\_ .node polygon,#chatgpt-mermaid-\_r_aqc\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ .rough-node .label text,#chatgpt-mermaid-\_r_aqc\_ .node .label text,#chatgpt-mermaid-\_r_aqc\_ .image-shape .label,#chatgpt-mermaid-\_r_aqc\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_aqc\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ .rough-node .label,#chatgpt-mermaid-\_r_aqc\_ .node .label,#chatgpt-mermaid-\_r_aqc\_ .image-shape .label,#chatgpt-mermaid-\_r_aqc\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_aqc\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_aqc\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqc\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqc\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_aqc\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_aqc\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_aqc\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_aqc\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_aqc\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_aqc\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqc\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_aqc\_ .icon-shape,#chatgpt-mermaid-\_r_aqc\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_aqc\_ .icon-shape p,#chatgpt-mermaid-\_r_aqc\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_aqc\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_aqc\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_aqc\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_aqc\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_aqc\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_aqc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_aqc\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_aqc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_aqc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqc\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_aqc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqc\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_aqc\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_aqc\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_aqc\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_aqc\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ .node rect,#chatgpt-mermaid-\_r_aqc\_ .node circle,#chatgpt-mermaid-\_r_aqc\_ .node ellipse,#chatgpt-mermaid-\_r_aqc\_ .node polygon,#chatgpt-mermaid-\_r_aqc\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_aqc\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_aqc\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_aqc\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_aqc\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqc\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}Natural Language IntentIntent UnderstandingIntent IRSemantic ValidationTask DAG GenerationCost & Resource PlanningExecution DAGStorage EnginePermission / Data Scope
+```mermaid
+flowchart LR
+    NL["Natural Language Intent"] --> IU["Intent Understanding"]
+    IU --> IR["Intent IR"]
+    IR --> SV["Semantic Validation"]
+    SV --> DAG["Task DAG Generation"]
+    DAG --> CRP["Cost & Resource Planning"]
+    CRP --> ED["Execution DAG"]
+    ED --> SE["Storage Engine"]
+    SE --> PD["Permission / Data Scope"]
+```
 
 例如：
 
@@ -529,7 +570,22 @@ AI 负责生成，存储引擎负责验证和执行。
 
 例如：
 
-\#chatgpt-mermaid-\_r_aqu\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_aqu\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_aqu\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_aqu\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_aqu\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_aqu\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_aqu\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_aqu\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_aqu\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_aqu\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqu\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqu\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_aqu\_ p{margin:0;}#chatgpt-mermaid-\_r_aqu\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_aqu\_ .label text,#chatgpt-mermaid-\_r_aqu\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ .node rect,#chatgpt-mermaid-\_r_aqu\_ .node circle,#chatgpt-mermaid-\_r_aqu\_ .node ellipse,#chatgpt-mermaid-\_r_aqu\_ .node polygon,#chatgpt-mermaid-\_r_aqu\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ .rough-node .label text,#chatgpt-mermaid-\_r_aqu\_ .node .label text,#chatgpt-mermaid-\_r_aqu\_ .image-shape .label,#chatgpt-mermaid-\_r_aqu\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_aqu\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ .rough-node .label,#chatgpt-mermaid-\_r_aqu\_ .node .label,#chatgpt-mermaid-\_r_aqu\_ .image-shape .label,#chatgpt-mermaid-\_r_aqu\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_aqu\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_aqu\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqu\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqu\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_aqu\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_aqu\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_aqu\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_aqu\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_aqu\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_aqu\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_aqu\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_aqu\_ .icon-shape,#chatgpt-mermaid-\_r_aqu\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_aqu\_ .icon-shape p,#chatgpt-mermaid-\_r_aqu\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_aqu\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_aqu\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_aqu\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_aqu\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_aqu\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_aqu\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_aqu\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_aqu\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_aqu\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqu\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_aqu\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_aqu\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_aqu\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_aqu\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_aqu\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_aqu\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ .node rect,#chatgpt-mermaid-\_r_aqu\_ .node circle,#chatgpt-mermaid-\_r_aqu\_ .node ellipse,#chatgpt-mermaid-\_r_aqu\_ .node polygon,#chatgpt-mermaid-\_r_aqu\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_aqu\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_aqu\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_aqu\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_aqu\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_aqu\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}Intent: Analyze PostgreSQLFunctionsRetrieve Source DocumentsRetrieve Access EventsExtract Function EntitiesAggregate Access FrequencyBuild Function GraphTop 100 FunctionsJoin by Function IdentityAnalyze DependenciesGenerate Result
+```mermaid
+flowchart TB
+    A["Intent: Analyze PostgreSQL Functions"]
+    A --> B["Retrieve Source Documents"]
+    A --> C["Retrieve Access Events"]
+    B --> D["Extract Function Entities"]
+    C --> E["Aggregate Access Frequency"]
+    D --> F["Build Function Graph"]
+    E --> G["Top 100 Functions"]
+    D --> H["Join by Function Identity"]
+    E --> H
+    F --> I["Analyze Dependencies"]
+    G --> I
+    H --> I
+    I --> J["Generate Result"]
+```
 
 其中 B 和 C 可以并行执行。
 
@@ -549,7 +605,7 @@ D 和 E 也可以并行执行。
 
 不同数据类型使用不同的执行粒度。
 
-# 五、存储引擎设计：直接面向硬件
+## 五、存储引擎设计：直接面向硬件
 
 这是与传统数据库区别最大的部分。
 
@@ -595,7 +651,28 @@ Buffer Manager 通过 Page 管理磁盘数据。
 
 Hardware-Aware Storage Engine（HASE）
 
-\#chatgpt-mermaid-\_r_ara\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_ara\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_ara\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_ara\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_ara\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_ara\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_ara\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_ara\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_ara\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_ara\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ara\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ara\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_ara\_ p{margin:0;}#chatgpt-mermaid-\_r_ara\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_ara\_ .label text,#chatgpt-mermaid-\_r_ara\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ .node rect,#chatgpt-mermaid-\_r_ara\_ .node circle,#chatgpt-mermaid-\_r_ara\_ .node ellipse,#chatgpt-mermaid-\_r_ara\_ .node polygon,#chatgpt-mermaid-\_r_ara\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ .rough-node .label text,#chatgpt-mermaid-\_r_ara\_ .node .label text,#chatgpt-mermaid-\_r_ara\_ .image-shape .label,#chatgpt-mermaid-\_r_ara\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_ara\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ .rough-node .label,#chatgpt-mermaid-\_r_ara\_ .node .label,#chatgpt-mermaid-\_r_ara\_ .image-shape .label,#chatgpt-mermaid-\_r_ara\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_ara\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_ara\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ara\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ara\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_ara\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_ara\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_ara\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_ara\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_ara\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_ara\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ara\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_ara\_ .icon-shape,#chatgpt-mermaid-\_r_ara\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_ara\_ .icon-shape p,#chatgpt-mermaid-\_r_ara\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_ara\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_ara\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_ara\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_ara\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_ara\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_ara\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_ara\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_ara\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_ara\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ara\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_ara\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ara\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_ara\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_ara\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_ara\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_ara\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ .node rect,#chatgpt-mermaid-\_r_ara\_ .node circle,#chatgpt-mermaid-\_r_ara\_ .node ellipse,#chatgpt-mermaid-\_r_ara\_ .node polygon,#chatgpt-mermaid-\_r_ara\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_ara\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_ara\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_ara\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_ara\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ara\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}Hardware Resource LayerHardware-Aware Storage EngineCPU / NUMADRAMCXL MemoryGPU / HBMNVMe SSDHDDStorage Metadata ManagerLogical Extent ManagerPhysical Extent ManagerMemory Tier ManagerIndex ManagerI/O SchedulerExecution Engine
+```mermaid
+flowchart TB
+    EE["Execution Engine"] --> HASE["Hardware-Aware Storage Engine"]
+    subgraph HASE_INNER["HASE 内部"]
+        M1["Storage Metadata Manager"]
+        M2["Logical Extent Manager"]
+        M3["Physical Extent Manager"]
+        M4["Memory Tier Manager"]
+        M5["Index Manager"]
+        M6["I/O Scheduler"]
+    end
+    HASE --> HASE_INNER
+    HASE_INNER --> HW
+    subgraph HW["Hardware Resource Layer"]
+        H1["CPU / NUMA"]
+        H2["DRAM"]
+        H3["CXL Memory"]
+        H4["GPU / HBM"]
+        H5["NVMe SSD"]
+        H6["HDD"]
+    end
+```
 
 这里不再把硬件统一抽象成文件。
 
@@ -773,7 +850,7 @@ Document Object
 
 应当根据访问模式决定 I/O 路径。
 
-# 六、索引系统：从单一 B-tree 到多模态索引
+## 六、索引系统：从单一 B-tree 到多模态索引
 
 AI-Native Storage 不应该只有一个通用索引。
 
@@ -781,7 +858,20 @@ AI-Native Storage 不应该只有一个通用索引。
 
 ## 6.1 索引架构
 
-\#chatgpt-mermaid-\_r_asg\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_asg\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_asg\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_asg\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_asg\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_asg\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_asg\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_asg\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_asg\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_asg\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_asg\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_asg\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_asg\_ p{margin:0;}#chatgpt-mermaid-\_r_asg\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_asg\_ .label text,#chatgpt-mermaid-\_r_asg\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ .node rect,#chatgpt-mermaid-\_r_asg\_ .node circle,#chatgpt-mermaid-\_r_asg\_ .node ellipse,#chatgpt-mermaid-\_r_asg\_ .node polygon,#chatgpt-mermaid-\_r_asg\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ .rough-node .label text,#chatgpt-mermaid-\_r_asg\_ .node .label text,#chatgpt-mermaid-\_r_asg\_ .image-shape .label,#chatgpt-mermaid-\_r_asg\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_asg\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ .rough-node .label,#chatgpt-mermaid-\_r_asg\_ .node .label,#chatgpt-mermaid-\_r_asg\_ .image-shape .label,#chatgpt-mermaid-\_r_asg\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_asg\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_asg\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_asg\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_asg\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_asg\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_asg\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_asg\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_asg\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_asg\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_asg\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_asg\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_asg\_ .icon-shape,#chatgpt-mermaid-\_r_asg\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_asg\_ .icon-shape p,#chatgpt-mermaid-\_r_asg\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_asg\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_asg\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_asg\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_asg\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_asg\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_asg\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_asg\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_asg\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_asg\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_asg\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_asg\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_asg\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_asg\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_asg\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_asg\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_asg\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ .node rect,#chatgpt-mermaid-\_r_asg\_ .node circle,#chatgpt-mermaid-\_r_asg\_ .node ellipse,#chatgpt-mermaid-\_r_asg\_ .node polygon,#chatgpt-mermaid-\_r_asg\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_asg\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_asg\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_asg\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_asg\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_asg\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}AI ObjectIndex ManagerVector IndexGraph IndexDocument IndexTensor Metadata IndexEvent Time IndexSemantic IndexHybrid IndexHNSW / IVF / DiskANNAdjacency / Path IndexInverted IndexLSM / Time PartitionEntity / Concept IndexVector + Keyword + Metadata
+```mermaid
+flowchart TB
+    OBJ["AI Object"] --> IM["Index Manager"]
+    IM --> IDX
+    subgraph IDX["索引类型"]
+        V["Vector Index<br/>HNSW / IVF / DiskANN"]
+        G["Graph Index<br/>Adjacency / Path Index"]
+        D["Document Index<br/>Inverted Index"]
+        T["Tensor Metadata Index"]
+        E["Event Time Index<br/>LSM / Time Partition"]
+        S["Semantic Index<br/>Entity / Concept Index"]
+        H["Hybrid Index<br/>Vector + Keyword + Metadata"]
+    end
+```
 
 ## 6.2 向量索引
 
@@ -855,11 +945,23 @@ ReorderBufferProcessTXN
 
 建议设计统一的 Hybrid Retrieval Engine：
 
-\#chatgpt-mermaid-\_r_at6\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_at6\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_at6\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_at6\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_at6\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_at6\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_at6\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_at6\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_at6\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_at6\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_at6\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_at6\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_at6\_ p{margin:0;}#chatgpt-mermaid-\_r_at6\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_at6\_ .label text,#chatgpt-mermaid-\_r_at6\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ .node rect,#chatgpt-mermaid-\_r_at6\_ .node circle,#chatgpt-mermaid-\_r_at6\_ .node ellipse,#chatgpt-mermaid-\_r_at6\_ .node polygon,#chatgpt-mermaid-\_r_at6\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ .rough-node .label text,#chatgpt-mermaid-\_r_at6\_ .node .label text,#chatgpt-mermaid-\_r_at6\_ .image-shape .label,#chatgpt-mermaid-\_r_at6\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_at6\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ .rough-node .label,#chatgpt-mermaid-\_r_at6\_ .node .label,#chatgpt-mermaid-\_r_at6\_ .image-shape .label,#chatgpt-mermaid-\_r_at6\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_at6\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_at6\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_at6\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_at6\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_at6\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_at6\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_at6\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_at6\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_at6\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_at6\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_at6\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_at6\_ .icon-shape,#chatgpt-mermaid-\_r_at6\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_at6\_ .icon-shape p,#chatgpt-mermaid-\_r_at6\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_at6\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_at6\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_at6\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_at6\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_at6\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_at6\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_at6\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_at6\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_at6\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_at6\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_at6\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_at6\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_at6\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_at6\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_at6\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_at6\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ .node rect,#chatgpt-mermaid-\_r_at6\_ .node circle,#chatgpt-mermaid-\_r_at6\_ .node ellipse,#chatgpt-mermaid-\_r_at6\_ .node polygon,#chatgpt-mermaid-\_r_at6\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_at6\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_at6\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_at6\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_at6\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_at6\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}IntentVector SearchKeyword SearchGraph SearchMetadata FilterCandidate MergeRe-rankingFinal Objects
+```mermaid
+flowchart LR
+    I["Intent"] --> V["Vector Search"]
+    I --> K["Keyword Search"]
+    I --> G["Graph Search"]
+    I --> M["Metadata Filter"]
+    V --> CM["Candidate Merge"]
+    K --> CM
+    G --> CM
+    M --> CM
+    CM --> RR["Re-ranking"]
+    RR --> FO["Final Objects"]
+```
 
 这里的 Re-ranking 可以选择规则算法、机器学习模型或外部 LLM，但基础召回不依赖 LLM。
 
-# 七、执行引擎：从 SQL Executor 到 AI Task Runtime
+## 七、执行引擎：从 SQL Executor 到 AI Task Runtime
 
 传统数据库的执行器以算子为核心。
 
@@ -879,13 +981,26 @@ AI-Native Storage 应该以任务为核心。
 
 整体流程：
 
-\#chatgpt-mermaid-\_r_ate\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_ate\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_ate\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_ate\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_ate\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_ate\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_ate\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_ate\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_ate\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_ate\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ate\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ate\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_ate\_ p{margin:0;}#chatgpt-mermaid-\_r_ate\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_ate\_ .label text,#chatgpt-mermaid-\_r_ate\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ .node rect,#chatgpt-mermaid-\_r_ate\_ .node circle,#chatgpt-mermaid-\_r_ate\_ .node ellipse,#chatgpt-mermaid-\_r_ate\_ .node polygon,#chatgpt-mermaid-\_r_ate\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ .rough-node .label text,#chatgpt-mermaid-\_r_ate\_ .node .label text,#chatgpt-mermaid-\_r_ate\_ .image-shape .label,#chatgpt-mermaid-\_r_ate\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_ate\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ .rough-node .label,#chatgpt-mermaid-\_r_ate\_ .node .label,#chatgpt-mermaid-\_r_ate\_ .image-shape .label,#chatgpt-mermaid-\_r_ate\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_ate\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_ate\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ate\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ate\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_ate\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_ate\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_ate\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_ate\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_ate\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_ate\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_ate\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_ate\_ .icon-shape,#chatgpt-mermaid-\_r_ate\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_ate\_ .icon-shape p,#chatgpt-mermaid-\_r_ate\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_ate\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_ate\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_ate\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_ate\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_ate\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_ate\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_ate\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_ate\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_ate\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ate\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_ate\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_ate\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_ate\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_ate\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_ate\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_ate\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ .node rect,#chatgpt-mermaid-\_r_ate\_ .node circle,#chatgpt-mermaid-\_r_ate\_ .node ellipse,#chatgpt-mermaid-\_r_ate\_ .node polygon,#chatgpt-mermaid-\_r_ate\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_ate\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_ate\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_ate\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_ate\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_ate\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}Intent IRIntent CompilerExecution DAGCost EstimatorResource SchedulerDAG SchedulerCPU WorkerGPU WorkerI/O WorkerResult Assembler
+```mermaid
+flowchart LR
+    IR["Intent IR"] --> IC["Intent Compiler"]
+    IC --> DAG["Execution DAG"]
+    DAG --> CE["Cost Estimator"]
+    CE --> RS["Resource Scheduler"]
+    RS --> DS["DAG Scheduler"]
+    DS --> CW["CPU Worker"]
+    DS --> GW["GPU Worker"]
+    DS --> IW["I/O Worker"]
+    CW --> RA["Result Assembler"]
+    GW --> RA
+    IW --> RA
+```
 
 ## 7.2 Worker 模型
 
 建议把 Worker 分为四类：
 
-1\. CPU Worker
+1. CPU Worker
 
 负责：
 
@@ -895,7 +1010,7 @@ AI-Native Storage 应该以任务为核心。
 - 图关系遍历。
 - 普通数据处理。
 
-2\. GPU Worker
+2. GPU Worker
 
 负责：
 
@@ -905,7 +1020,7 @@ AI-Native Storage 应该以任务为核心。
 - GPU 重排序。
 - AI 模型推理（如果系统集成模型运行时）。
 
-3\. I/O Worker
+3. I/O Worker
 
 负责：
 
@@ -915,7 +1030,7 @@ AI-Native Storage 应该以任务为核心。
 - 磁盘数据整理。
 - 持久化操作。
 
-4\. Maintenance Worker
+4. Maintenance Worker
 
 负责：
 
@@ -977,7 +1092,7 @@ Object Retrieval
 
 成本模型可以考虑：
 
-\\[ Cost = C\_{IO}+C\_{CPU}+C\_{GPU}+C\_{Memory}+C\_{Network}+C\_{Sync} \\]
+$$ Cost = C_{IO}+C_{CPU}+C_{GPU}+C_{Memory}+C_{Network}+C_{Sync} $$
 
 例如：
 
@@ -1004,7 +1119,7 @@ DRAM Vector Cache -> GPU Similarity
 
 最终选择预计总成本最低的方案。
 
-# 八、事务系统：不能因为面向 AI 就放弃 ACID
+## 八、事务系统：不能因为面向 AI 就放弃 ACID
 
 这是整个架构必须认真处理的问题。
 
@@ -1103,7 +1218,21 @@ typedef struct StorageTxn
 
 可以使用：
 
-\#chatgpt-mermaid-\_r_auf\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_auf\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_auf\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_auf\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_auf\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_auf\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_auf\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_auf\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_auf\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_auf\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_auf\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_auf\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_auf\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_auf\_ p{margin:0;}#chatgpt-mermaid-\_r_auf\_ defs [id$="-barbEnd"]{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_auf\_ g.stateGroup text{fill:rgb(107, 198, 127);stroke:none;font-size:10px;}#chatgpt-mermaid-\_r_auf\_ g.stateGroup text{fill:rgb(13, 13, 13);stroke:none;font-size:10px;}#chatgpt-mermaid-\_r_auf\_ g.stateGroup .state-title{font-weight:bolder;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ g.stateGroup rect{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_auf\_ g.stateGroup line{stroke:rgb(143, 143, 143);stroke-width:1;}#chatgpt-mermaid-\_r_auf\_ .transition{stroke:rgb(143, 143, 143);stroke-width:1;fill:none;}#chatgpt-mermaid-\_r_auf\_ .stateGroup .composit{fill:transparent;border-bottom:1px;}#chatgpt-mermaid-\_r_auf\_ .stateGroup .alt-composit{fill:#e0e0e0;border-bottom:1px;}#chatgpt-mermaid-\_r_auf\_ .state-note{stroke:rgb(239, 139, 87);fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_auf\_ .state-note text{fill:rgb(13, 13, 13);stroke:none;font-size:10px;}#chatgpt-mermaid-\_r_auf\_ .stateLabel .box{stroke:none;stroke-width:0;fill:rgb(226, 242, 230);opacity:0.5;}#chatgpt-mermaid-\_r_auf\_ .edgeLabel .label rect{fill:rgb(226, 242, 230);opacity:0.5;}#chatgpt-mermaid-\_r_auf\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_auf\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_auf\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_auf\_ .edgeLabel .label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ .label div .edgeLabel{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ .stateLabel text{fill:rgb(13, 13, 13);font-size:10px;font-weight:bold;}#chatgpt-mermaid-\_r_auf\_ .node circle.state-start{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_auf\_ .node .fork-join{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_auf\_ .node circle.state-end{fill:rgb(107, 198, 127);stroke:transparent;stroke-width:1.5;}#chatgpt-mermaid-\_r_auf\_ .end-state-inner{fill:transparent;stroke-width:1.5;}#chatgpt-mermaid-\_r_auf\_ .node rect{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_auf\_ .node polygon{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_auf\_ [id$="-barbEnd"]{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_auf\_ .statediagram-cluster rect{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_auf\_ .cluster-label,#chatgpt-mermaid-\_r_auf\_ .nodeLabel{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ .statediagram-cluster rect.outer{rx:5px;ry:5px;}#chatgpt-mermaid-\_r_auf\_ .statediagram-state .divider{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_auf\_ .statediagram-state .title-state{rx:5px;ry:5px;}#chatgpt-mermaid-\_r_auf\_ .statediagram-cluster.statediagram-cluster .inner{fill:transparent;}#chatgpt-mermaid-\_r_auf\_ .statediagram-cluster.statediagram-cluster-alt .inner{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_auf\_ .statediagram-cluster .inner{rx:0;ry:0;}#chatgpt-mermaid-\_r_auf\_ .statediagram-state rect.basic{rx:5px;ry:5px;}#chatgpt-mermaid-\_r_auf\_ .statediagram-state rect.divider{stroke-dasharray:10,10;fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_auf\_ .note-edge{stroke-dasharray:5;}#chatgpt-mermaid-\_r_auf\_ .statediagram-note rect{fill:rgb(243, 243, 243);stroke:rgb(239, 139, 87);stroke-width:1px;rx:0;ry:0;}#chatgpt-mermaid-\_r_auf\_ .statediagram-note rect{fill:rgb(243, 243, 243);stroke:rgb(239, 139, 87);stroke-width:1px;rx:0;ry:0;}#chatgpt-mermaid-\_r_auf\_ .statediagram-note text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ .statediagram-note .nodeLabel{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ .statediagram .edgeLabel{color:red;}#chatgpt-mermaid-\_r_auf\_ [id$="-dependencyStart"],#chatgpt-mermaid-\_r_auf\_ [id$="-dependencyEnd"]{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);stroke-width:1;}#chatgpt-mermaid-\_r_auf\_ .statediagramTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].statediagram-cluster rect{fill:rgb(226, 242, 230);stroke:url(#chatgpt-mermaid-\_r_auf\_-gradient);stroke-width:1;}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].statediagram-cluster rect.outer{rx:5px;ry:5px;filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_auf\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_auf\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_auf\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_auf\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_auf\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_auf\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_auf\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_auf\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}CreatedRunningCheckpointedCommittingCompletedFailedRetryCompensatingAborted
+```mermaid
+stateDiagram-v2
+    [*] --> Created
+    Created --> Running
+    Running --> Checkpointed
+    Checkpointed --> Running
+    Running --> Committing
+    Committing --> Completed
+    Running --> Failed
+    Failed --> Retry
+    Retry --> Running
+    Failed --> Compensating
+    Compensating --> Aborted
+    Committing --> Failed
+```
 
 每个步骤完成后记录 Checkpoint。
 
@@ -1138,7 +1267,7 @@ AI 场景中存在大量不同类型的并发：
 
 可以将索引维护设计为可恢复的增量任务，并通过版本号或 LSN 水位保证查询可见性。
 
-# 九、持久化和恢复体系
+## 九、持久化和恢复体系
 
 AI-Native Storage 仍然需要一个可靠的持久化体系。
 
@@ -1196,7 +1325,18 @@ Transaction
 
 ## 9.2 恢复流程
 
-\#chatgpt-mermaid-\_r_av0\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_av0\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_av0\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_av0\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_av0\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_av0\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_av0\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_av0\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_av0\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_av0\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_av0\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_av0\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_av0\_ p{margin:0;}#chatgpt-mermaid-\_r_av0\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_av0\_ .label text,#chatgpt-mermaid-\_r_av0\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ .node rect,#chatgpt-mermaid-\_r_av0\_ .node circle,#chatgpt-mermaid-\_r_av0\_ .node ellipse,#chatgpt-mermaid-\_r_av0\_ .node polygon,#chatgpt-mermaid-\_r_av0\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ .rough-node .label text,#chatgpt-mermaid-\_r_av0\_ .node .label text,#chatgpt-mermaid-\_r_av0\_ .image-shape .label,#chatgpt-mermaid-\_r_av0\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_av0\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ .rough-node .label,#chatgpt-mermaid-\_r_av0\_ .node .label,#chatgpt-mermaid-\_r_av0\_ .image-shape .label,#chatgpt-mermaid-\_r_av0\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_av0\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_av0\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_av0\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_av0\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_av0\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_av0\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_av0\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_av0\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_av0\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_av0\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_av0\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_av0\_ .icon-shape,#chatgpt-mermaid-\_r_av0\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_av0\_ .icon-shape p,#chatgpt-mermaid-\_r_av0\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_av0\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_av0\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_av0\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_av0\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_av0\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_av0\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_av0\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_av0\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_av0\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_av0\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_av0\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_av0\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_av0\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_av0\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_av0\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_av0\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ .node rect,#chatgpt-mermaid-\_r_av0\_ .node circle,#chatgpt-mermaid-\_r_av0\_ .node ellipse,#chatgpt-mermaid-\_r_av0\_ .node polygon,#chatgpt-mermaid-\_r_av0\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_av0\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_av0\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_av0\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_av0\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_av0\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}System StartupLoad SuperblockLoad MetadataFind Latest CheckpointReplay WALRecover TransactionsValidate ExtentsRecover Index StateRebuild Invalid IndexStart Services
+```mermaid
+flowchart TB
+    S["System Startup"] --> SB["Load Superblock"]
+    SB --> MD["Load Metadata"]
+    MD --> CP["Find Latest Checkpoint"]
+    CP --> WAL["Replay WAL"]
+    WAL --> RT["Recover Transactions"]
+    RT --> VE["Validate Extents"]
+    VE --> RIS["Recover Index State"]
+    RIS --> RB["Rebuild Invalid Index"]
+    RB --> SS["Start Services"]
+```
 
 特别需要注意：
 
@@ -1204,7 +1344,7 @@ Transaction
 
 索引应该是可恢复的派生结构，核心数据和事务状态才是恢复依据。
 
-# 十、AI-Native Memory：一个值得独立设计的子系统
+## 十、AI-Native Memory：一个值得独立设计的子系统
 
 我认为 AI Memory 应该是这套系统的核心能力之一，而不是简单地作为 Vector Store 的一个应用。
 
@@ -1250,7 +1390,17 @@ Agent Memory
 
 ## 10.2 Memory 生命周期
 
-\#chatgpt-mermaid-\_r_avc\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_avc\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_avc\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_avc\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_avc\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_avc\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_avc\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_avc\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_avc\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_avc\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avc\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avc\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_avc\_ p{margin:0;}#chatgpt-mermaid-\_r_avc\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_avc\_ .label text,#chatgpt-mermaid-\_r_avc\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ .node rect,#chatgpt-mermaid-\_r_avc\_ .node circle,#chatgpt-mermaid-\_r_avc\_ .node ellipse,#chatgpt-mermaid-\_r_avc\_ .node polygon,#chatgpt-mermaid-\_r_avc\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ .rough-node .label text,#chatgpt-mermaid-\_r_avc\_ .node .label text,#chatgpt-mermaid-\_r_avc\_ .image-shape .label,#chatgpt-mermaid-\_r_avc\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_avc\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ .rough-node .label,#chatgpt-mermaid-\_r_avc\_ .node .label,#chatgpt-mermaid-\_r_avc\_ .image-shape .label,#chatgpt-mermaid-\_r_avc\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_avc\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_avc\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avc\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avc\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_avc\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_avc\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avc\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avc\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_avc\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_avc\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avc\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_avc\_ .icon-shape,#chatgpt-mermaid-\_r_avc\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_avc\_ .icon-shape p,#chatgpt-mermaid-\_r_avc\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_avc\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_avc\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avc\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_avc\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_avc\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_avc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_avc\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_avc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_avc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avc\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_avc\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avc\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_avc\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_avc\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_avc\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_avc\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ .node rect,#chatgpt-mermaid-\_r_avc\_ .node circle,#chatgpt-mermaid-\_r_avc\_ .node ellipse,#chatgpt-mermaid-\_r_avc\_ .node polygon,#chatgpt-mermaid-\_r_avc\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_avc\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_avc\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_avc\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_avc\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avc\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}New InformationWorking MemoryImportance EvaluationSemantic ExtractionRelationship ConstructionLong-term MemoryMemory ConsolidationMemory Expiration / Deletion重要临时
+```mermaid
+flowchart TB
+    N["New Information"] --> WM["Working Memory"]
+    WM --> IE["Importance Evaluation"]
+    IE -->|重要| SE["Semantic Extraction"]
+    IE -->|临时| EX["过期丢弃"]
+    SE --> RC["Relationship Construction"]
+    RC --> LTM["Long-term Memory"]
+    LTM --> MC["Memory Consolidation"]
+    MC --> EXP["Memory Expiration / Deletion"]
+```
 
 这里需要将记忆提取与记忆持久化分离。
 
@@ -1262,21 +1412,21 @@ LLM 可以判断某条信息是否值得保存，但最终的写入必须经过�
 
 可以设计一个综合评分模型：
 
-\\[ Score = w_s S\_{semantic}+ w_r S\_{recency}+ w_i S\_{importance}+ w_c S\_{context}+ w_t S\_{trust} \\]
+$$ Score = w_s S_{semantic}+ w_r S_{recency}+ w_i S_{importance}+ w_c S_{context}+ w_t S_{trust} $$
 
 其中：
 
-- \\(S\_{semantic}\\)：语义相关性。
-- \\(S\_{recency}\\)：时间新近性。
-- \\(S\_{importance}\\)：重要性。
-- \\(S\_{context}\\)：当前任务上下文相关性。
-- \\(S\_{trust}\\)：信息来源可信度。
+- \$S_{semantic}\$：语义相关性。
+- \$S_{recency}\$：时间新近性。
+- \$S_{importance}\$：重要性。
+- \$S_{context}\$：当前任务上下文相关性。
+- \$S_{trust}\$：信息来源可信度。
 
 权重可以根据工作负载进行配置或学习。
 
 这样，AI 不只是从数据库中寻找相似文本，而是从存储引擎中直接检索与当前任务相关的记忆对象。
 
-# 十一、AI 与存储引擎的边界：安全和确定性
+## 十一、AI 与存储引擎的边界：安全和确定性
 
 这一部分决定系统能否真正用于生产环境。
 
@@ -1295,7 +1445,17 @@ AI 的最大问题不是不会生成查询，而是可能生成错误的操作�
 
 ## 11.1 安全执行架构
 
-\#chatgpt-mermaid-\_r_avk\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_avk\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_avk\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_avk\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_avk\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_avk\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_avk\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_avk\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_avk\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_avk\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avk\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avk\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_avk\_ p{margin:0;}#chatgpt-mermaid-\_r_avk\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_avk\_ .label text,#chatgpt-mermaid-\_r_avk\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ .node rect,#chatgpt-mermaid-\_r_avk\_ .node circle,#chatgpt-mermaid-\_r_avk\_ .node ellipse,#chatgpt-mermaid-\_r_avk\_ .node polygon,#chatgpt-mermaid-\_r_avk\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ .rough-node .label text,#chatgpt-mermaid-\_r_avk\_ .node .label text,#chatgpt-mermaid-\_r_avk\_ .image-shape .label,#chatgpt-mermaid-\_r_avk\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_avk\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ .rough-node .label,#chatgpt-mermaid-\_r_avk\_ .node .label,#chatgpt-mermaid-\_r_avk\_ .image-shape .label,#chatgpt-mermaid-\_r_avk\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_avk\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_avk\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avk\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avk\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_avk\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_avk\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avk\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avk\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_avk\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_avk\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avk\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_avk\_ .icon-shape,#chatgpt-mermaid-\_r_avk\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_avk\_ .icon-shape p,#chatgpt-mermaid-\_r_avk\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_avk\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_avk\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avk\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_avk\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_avk\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_avk\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_avk\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_avk\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_avk\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avk\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_avk\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avk\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_avk\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_avk\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_avk\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_avk\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ .node rect,#chatgpt-mermaid-\_r_avk\_ .node circle,#chatgpt-mermaid-\_r_avk\_ .node ellipse,#chatgpt-mermaid-\_r_avk\_ .node polygon,#chatgpt-mermaid-\_r_avk\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_avk\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_avk\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_avk\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_avk\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avk\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}AI IntentIntent CompilerPolicy EnginePlan ValidatorResource QuotaExecution EngineIdentity / ACL / TenantType / Bounds / DependencyCPU / GPU / Memory / I/OLimits
+```mermaid
+flowchart LR
+    AI["AI Intent"] --> IC["Intent Compiler"]
+    IC --> PE["Policy Engine"]
+    PE --> PV["Plan Validator"]
+    PV --> RQ["Resource Quota"]
+    RQ --> EE["Execution Engine"]
+    PE -.-> C1["Identity / ACL / Tenant"]
+    PV -.-> C2["Type / Bounds / Dependency"]
+    RQ -.-> C3["CPU / GPU / Memory / I/O Limits"]
+```
 
 AI 生成的计划必须通过以下检查：
 
@@ -1324,13 +1484,31 @@ AI 生成的计划必须通过以下检查：
 
 AI 可以建议执行操作，但不能绕过存储引擎的权限和事务机制。
 
-# 十二、分布式架构设计
+## 十二、分布式架构设计
 
 第一版可以先实现单机存储引擎，但是架构需要为分布式扩展预留接口。
 
 ## 12.1 分布式总体架构
 
-\#chatgpt-mermaid-\_r_avr\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_avr\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_avr\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_avr\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_avr\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_avr\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_avr\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_avr\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_avr\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_avr\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avr\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avr\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_avr\_ p{margin:0;}#chatgpt-mermaid-\_r_avr\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_avr\_ .label text,#chatgpt-mermaid-\_r_avr\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ .node rect,#chatgpt-mermaid-\_r_avr\_ .node circle,#chatgpt-mermaid-\_r_avr\_ .node ellipse,#chatgpt-mermaid-\_r_avr\_ .node polygon,#chatgpt-mermaid-\_r_avr\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ .rough-node .label text,#chatgpt-mermaid-\_r_avr\_ .node .label text,#chatgpt-mermaid-\_r_avr\_ .image-shape .label,#chatgpt-mermaid-\_r_avr\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_avr\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ .rough-node .label,#chatgpt-mermaid-\_r_avr\_ .node .label,#chatgpt-mermaid-\_r_avr\_ .image-shape .label,#chatgpt-mermaid-\_r_avr\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_avr\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_avr\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avr\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avr\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_avr\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_avr\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avr\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avr\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_avr\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_avr\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_avr\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_avr\_ .icon-shape,#chatgpt-mermaid-\_r_avr\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_avr\_ .icon-shape p,#chatgpt-mermaid-\_r_avr\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_avr\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_avr\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_avr\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_avr\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_avr\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_avr\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_avr\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_avr\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_avr\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avr\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_avr\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_avr\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_avr\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_avr\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_avr\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_avr\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ .node rect,#chatgpt-mermaid-\_r_avr\_ .node circle,#chatgpt-mermaid-\_r_avr\_ .node ellipse,#chatgpt-mermaid-\_r_avr\_ .node polygon,#chatgpt-mermaid-\_r_avr\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_avr\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_avr\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_avr\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_avr\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_avr\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}AI Storage ClusterNode 3Node 2Node 1Storage EngineGPU / NVMeStorage EngineGPU / NVMeStorage EngineGPU / NVMeAI Agent / ClientAI GatewayIntent PlannerDistributed Task Scheduler
+```mermaid
+flowchart TB
+    C["AI Agent / Client"] --> GW["AI Gateway"]
+    GW --> IP["Intent Planner"]
+    IP --> TS["Distributed Task Scheduler"]
+    TS --> N1 & N2 & N3
+    subgraph N1["Node 1"]
+        SE1["Storage Engine"]
+        R1["GPU / NVMe"]
+    end
+    subgraph N2["Node 2"]
+        SE2["Storage Engine"]
+        R2["GPU / NVMe"]
+    end
+    subgraph N3["Node 3"]
+        SE3["Storage Engine"]
+        R3["GPU / NVMe"]
+    end
+```
 
 ## 12.2 分布式数据管理
 
@@ -1376,7 +1554,7 @@ AI 可以建议执行操作，但不能绕过存储引擎的权限和事务机�
 
 第一版不建议实现一个复杂的跨节点全局事务系统。先实现单机事务和多节点数据分布，再逐步增加分布式事务能力。
 
-# 十三、系统对外接口设计：AI API 取代 SQL API
+## 十三、系统对外接口设计：AI API 取代 SQL API
 
 这一层决定用户如何使用系统。
 
@@ -1471,7 +1649,7 @@ AI Interface
 
 SQL 兼容层只作为边缘接口，不能反过来成为核心执行模型。
 
-# 十四、关键内部模块与代码组织
+## 十四、关键内部模块与代码组织
 
 为了真正实现这套系统，不能只停留在概念架构上。
 
@@ -1586,7 +1764,18 @@ ains/
 
 建议依赖方向：
 
-\#chatgpt-mermaid-\_r_b1d\_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(13, 13, 13);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-\_r_b1d\_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_b1d\_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-\_r_b1d\_ .error-icon{fill:rgb(243, 243, 243);}#chatgpt-mermaid-\_r_b1d\_ .error-text{fill:rgb(13, 13, 13);stroke:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-\_r_b1d\_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-\_r_b1d\_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-\_r_b1d\_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-\_r_b1d\_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-\_r_b1d\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_b1d\_ .marker.cross{stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_b1d\_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-\_r_b1d\_ p{margin:0;}#chatgpt-mermaid-\_r_b1d\_ .label{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ .cluster-label text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ .cluster-label span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ .cluster-label span p{background-color:transparent;}#chatgpt-mermaid-\_r_b1d\_ .label text,#chatgpt-mermaid-\_r_b1d\_ span{fill:rgb(13, 13, 13);color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ .node rect,#chatgpt-mermaid-\_r_b1d\_ .node circle,#chatgpt-mermaid-\_r_b1d\_ .node ellipse,#chatgpt-mermaid-\_r_b1d\_ .node polygon,#chatgpt-mermaid-\_r_b1d\_ .node path{fill:rgb(226, 242, 230);stroke:rgb(107, 198, 127);stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ .rough-node .label text,#chatgpt-mermaid-\_r_b1d\_ .node .label text,#chatgpt-mermaid-\_r_b1d\_ .image-shape .label,#chatgpt-mermaid-\_r_b1d\_ .icon-shape .label{text-anchor:middle;}#chatgpt-mermaid-\_r_b1d\_ .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ .rough-node .label,#chatgpt-mermaid-\_r_b1d\_ .node .label,#chatgpt-mermaid-\_r_b1d\_ .image-shape .label,#chatgpt-mermaid-\_r_b1d\_ .icon-shape .label{text-align:center;}#chatgpt-mermaid-\_r_b1d\_ .node.clickable{cursor:pointer;}#chatgpt-mermaid-\_r_b1d\_ .root .anchor path{fill:rgb(143, 143, 143)!important;stroke-width:0;stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_b1d\_ .arrowheadPath{fill:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_b1d\_ .edgePath .path{stroke:rgb(143, 143, 143);stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ .flowchart-link{stroke:rgb(143, 143, 143);fill:none;}#chatgpt-mermaid-\_r_b1d\_ .edgeLabel{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_b1d\_ .edgeLabel p{background-color:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_b1d\_ .edgeLabel rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_b1d\_ .labelBkg{background-color:rgba(252, 252, 252, 0.5);}#chatgpt-mermaid-\_r_b1d\_ .cluster rect{fill:rgb(243, 243, 243);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ .cluster text{fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ .cluster span{color:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:12px;background:rgb(243, 243, 243);border:1px solid rgba(0, 0, 0, 0.1);border-radius:2px;pointer-events:none;z-index:100;}#chatgpt-mermaid-\_r_b1d\_ .flowchartTitleText{text-anchor:middle;font-size:18px;fill:rgb(13, 13, 13);}#chatgpt-mermaid-\_r_b1d\_ rect.text{fill:none;stroke-width:0;}#chatgpt-mermaid-\_r_b1d\_ .icon-shape,#chatgpt-mermaid-\_r_b1d\_ .image-shape{background-color:rgb(252, 252, 252);text-align:center;}#chatgpt-mermaid-\_r_b1d\_ .icon-shape p,#chatgpt-mermaid-\_r_b1d\_ .image-shape p{background-color:rgb(252, 252, 252);padding:2px;}#chatgpt-mermaid-\_r_b1d\_ .icon-shape .label rect,#chatgpt-mermaid-\_r_b1d\_ .image-shape .label rect{opacity:0.5;background-color:rgb(252, 252, 252);fill:rgb(252, 252, 252);}#chatgpt-mermaid-\_r_b1d\_ .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#chatgpt-mermaid-\_r_b1d\_ .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#chatgpt-mermaid-\_r_b1d\_ .node .neo-node{stroke:rgb(107, 198, 127);}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].node rect,#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].cluster rect,#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-\_r_b1d\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-\_r_b1d\_-gradient);stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].node .neo-line path{stroke:rgb(107, 198, 127);filter:none;}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-\_r_b1d\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-\_r_b1d\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_b1d\_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-\_r_b1d\_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-\_r_b1d\_ .node text{font-size:14px;font-weight:600;letter-spacing:normal;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_b1d\_ .edgeLabels text{font-size:13px;font-weight:600;letter-spacing:-0.08px;fill:rgb(0, 105, 42);}#chatgpt-mermaid-\_r_b1d\_ .node tspan[font-weight="normal"],#chatgpt-mermaid-\_r_b1d\_ .edgeLabels tspan[font-weight="normal"]{font-weight:600;}#chatgpt-mermaid-\_r_b1d\_ .edgeLabel .label rect{opacity:1;rx:13px;ry:13px;fill:rgb(237, 250, 242);stroke:rgb(166, 211, 184);stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ .node rect,#chatgpt-mermaid-\_r_b1d\_ .node circle,#chatgpt-mermaid-\_r_b1d\_ .node ellipse,#chatgpt-mermaid-\_r_b1d\_ .node polygon,#chatgpt-mermaid-\_r_b1d\_ .node path{fill:rgb(217, 244, 228);stroke:rgba(0, 0, 0, 0.1);stroke-width:1px;}#chatgpt-mermaid-\_r_b1d\_ .node rect{rx:16px;ry:16px;}#chatgpt-mermaid-\_r_b1d\_ .node.mermaid-decision .label-container{fill:rgb(237, 250, 242);stroke:rgb(195, 220, 205);stroke-dasharray:2,2;}#chatgpt-mermaid-\_r_b1d\_ .edgePaths .flowchart-link{stroke:rgb(143, 143, 143);stroke-width:1px;stroke-linecap:round;stroke-linejoin:round;}#chatgpt-mermaid-\_r_b1d\_ .marker{fill:rgb(143, 143, 143);stroke:rgb(143, 143, 143);}#chatgpt-mermaid-\_r_b1d\_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}Hardware AbstractionStorage EngineTransaction ManagerIndex EngineData ModelExecution EngineIntent IRAI IntelligenceAPI Layer
+```mermaid
+flowchart TB
+    API["API Layer"] --> IIR["Intent IR"]
+    IIR --> AI["AI Intelligence"]
+    AI --> EX["Execution Engine"]
+    EX --> DM["Data Model"]
+    EX --> TE["Transaction Manager"]
+    EX --> IE["Index Engine"]
+    IE --> SE["Storage Engine"]
+    TE --> SE
+    SE --> HA["Hardware Abstraction"]
+```
 
 这里的箭头表示依赖方向。
 
@@ -1600,7 +1789,7 @@ ains/
 
 这样即使更换 LLM、GPU 或 NVMe 驱动，也不需要修改存储内核的核心实现。
 
-# 十五、核心数据结构与内部接口
+## 十五、核心数据结构与内部接口
 
 下面给出第一版应该定义的核心接口。
 
@@ -1749,7 +1938,7 @@ pub trait TransactionManager {
 
 这些接口是第一版的逻辑边界。真正编码时，还需要确定对象安全性、异步 I/O 生命周期、Buffer 所有权、取消安全以及 WAL 提交顺序。
 
-# 十六、AI-Native Storage 与传统数据库的本质区别
+## 十六、AI-Native Storage 与传统数据库的本质区别
 
 把整个架构归纳一下：
 
@@ -1810,7 +1999,7 @@ Logical Extent
 Hardware Resource
 ```
 
-# 十七、落地实施路线
+## 十七、落地实施路线
 
 不建议一开始就实现完整的分布式 AI 数据库。
 
@@ -1925,7 +2114,7 @@ MVP 推荐范围
 
 这些功能都可以在架构中预留扩展点。
 
-# 十八、性能设计与验收标准
+## 十八、性能设计与验收标准
 
 这类系统不能只验证 AI 能不能正确回答问题。
 
@@ -1999,7 +2188,7 @@ AI-Native Storage
 
 还需要比较 P50、P95、P99 延迟、召回率、资源利用率、写入放大、恢复时间和整体成本。
 
-# 十九、几个必须提前解决的架构问题
+## 十九、几个必须提前解决的架构问题
 
 我认为这套设计中还有六个关键问题，需要在正式进入编码前形成明确的技术决策。
 
@@ -2014,7 +2203,7 @@ AI-Native Storage
 
 此外，还有三个值得特别研究的技术方向。
 
-1\. GPU 是否应该成为存储执行引擎的一部分？
+1. GPU 是否应该成为存储执行引擎的一部分？
 
 传统数据库把 GPU 当作外部计算设备。
 
@@ -2022,7 +2211,7 @@ AI-Native Storage
 
 但 GPU 不应该承担事务协调、WAL 恢复和所有元数据管理。
 
-2\. 是否应该让存储引擎拥有自己的 AI 模型运行时？
+2. 是否应该让存储引擎拥有自己的 AI 模型运行时？
 
 我的建议是第一版不要内置 LLM Runtime。
 
@@ -2030,7 +2219,7 @@ AI-Native Storage
 
 否则存储内核会同时承担数据库研发和模型推理框架研发，范围过大。
 
-3\. 数据是否需要针对 AI 模型重新组织？
+3. 数据是否需要针对 AI 模型重新组织？
 
 我认为需要。
 
@@ -2038,17 +2227,13 @@ AI-Native Storage
 
 未来可以设计 Model-Aware Layout，让数据布局能够感知模型访问模式，而不仅仅是感知数据类型。
 
-# 二十、最终架构定位
+## 二十、最终架构定位
 
 我建议将这个项目定义为：
 
-# AI-Native Storage System
+### AI-Native Storage System
 
 ## A storage engine designed for AI workloads and hardware-native execution.
-
-[Storage Architecture | IOWarp](https://images.openai.com/static-rsc-4/WMYJkhG413llYnkqp7i5AcOSYej5IfFbftsSFgpt0y7I9117CVjtGKjgfEypETVCnuXU_Esp84vsnXbAxjy1TVMZmI4Hzus3POJ3-MLWxba0S-8hzQmF5CPpBmg7FqZvrk9MBQrhFoPa62B2MC4rE2MywZKB6oTkvHwPgZO5yIs?purpose=inline)
-
-[iowarp.ai](https://iowarp.ai/platform/storage/?utm_source=chatgpt.com)
 
 核心架构：
 
