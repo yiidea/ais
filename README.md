@@ -77,6 +77,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/chatgpt/03-consistency-kernel.md](docs/chatgpt/03-consistency-kernel.md) | **一致性协议与崩溃恢复**：WAL 二进制格式、锁分层、内存状态机、Checkpoint / Recovery 算法、迁移提交点、GC 六条件判定、故障注入矩阵 |
 | [docs/chatgpt/04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md) | **内核接口冻结**：Rust trait 形状、统一错误模型与可重试性、模块调用方向与依赖禁令、五层锁顺序、公共 API 表面约束、接口变更流程 |
 | [docs/chatgpt/05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md) | **内核测试夹具与故障注入**：假设备掉电模型、语义注入点目录、假时钟与确定性调度、一致性检查器、不变量常驻断言、CI 接线 |
+| [docs/chatgpt/06-index-recovery.md](docs/chatgpt/06-index-recovery.md) | **索引恢复的增量算法**：LSN / xid 双水位、追赶三阶段与「先段后水位」发布顺序、幂等键与内容哈希、回退扫描路径与代价模型、索引段回收判定 |
 
 ### 补充架构文档（本仓库新增，供实现落地）
 
@@ -182,6 +183,7 @@ engine.intent({
 
 - Phase 1 内核接口（Object / Extent / Mapping / WAL / Transaction / Checkpoint / Reclaimer / Migration）→ [04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md)、[ADR-0008](docs/adr/0008-kernel-interface-freeze.md)
 - 故障注入夹具与不变量可执行化方案 → [05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md)、[ADR-0009](docs/adr/0009-fault-injection-harness.md)
+- 索引恢复的增量算法与回退代价模型 → [06-index-recovery.md](docs/chatgpt/06-index-recovery.md)（尚有几条待补的 ADR：`ChangeFeed` 入冻结清单、索引层写内核 WAL、两本日志的可见性对齐、索引段回收判定）
 
 建议的下一步：
 

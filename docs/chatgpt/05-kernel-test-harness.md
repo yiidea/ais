@@ -594,5 +594,5 @@ CI 提供 `cargo test -- --seed 12345 --workload wal_crash --fault wal.flushed` 
 剩下的设计工作有三项：
 
 1. **把设备级 site 的打点机制回填到 [04 §6.3](04-kernel-interfaces.md) 的 `IoExecutor` 契约里。** §3.1.1 已经把 site 分成两级：**设备级** site 需要 `IoExecutor` 能携带 site 标签（或 `DeviceOp` 增加 `site` 字段），**内核级** site 在模块内显式打点、不进设备路径。剩下要定的是设备级那一半的具体形状——标签放在 `DeviceOp` 上还是放在 `submit_and_wait` 的参数上，两者的公共 API 影响不同；以及 `submit_batch_and_wait` 的批量场景怎么给每个操作打标签。这是对 [04](04-kernel-interfaces.md) 冻结契约的补充，需要一条 ADR。
-2. **索引恢复的增量算法**（[03 §12 第 2 项](03-consistency-kernel.md)）——「日志水位 → 索引构建水位」的追赶策略，以及「滞后索引的查询回退路径」的代价估计。这一项与本文件的 §5.4 `架构 I4` 直接相关：回退路径的代价估计必须落到查询规划器能用的形式上。
+2. **索引恢复的增量算法**（[03 §12 第 2 项](03-consistency-kernel.md)）——「日志水位 → 索引构建水位」的追赶策略，以及「滞后索引的查询回退路径」的代价估计。 → 已完成，见 [06-index-recovery.md](06-index-recovery.md)。该文的 §6.3 要求本文件的夹具扩展一层：L1 模块表与 §3.5 的 `FaultSite` 枚举都要加入索引构建器与两个索引层 site。
 3. **硬件资源管理的实现细节**（[03 §12 第 3 项](03-consistency-kernel.md)）——参数化 Placement 代价模型、定义 NUMA 亲和调度与 io_uring 队列深度的切换判据。这一项会反过来影响假设备要模拟多少设备差异（§2.3 的降级模型是否够用）。

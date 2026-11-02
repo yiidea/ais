@@ -2298,11 +2298,12 @@ CPU / DRAM / GPU / HBM / NVMe / CXL
 | 3 一致性设计 | [03-consistency-kernel](03-consistency-kernel.md) | 已完成（WAL 格式、锁分层、Checkpoint / Recovery、GC 六条件、注入矩阵） |
 | — 内核接口 | [04-kernel-interfaces](04-kernel-interfaces.md) | 已冻结（[ADR-0008](../adr/0008-kernel-interface-freeze.md)） |
 | — 测试与故障注入 | [05-kernel-test-harness](05-kernel-test-harness.md) | 已设计（[ADR-0009](../adr/0009-fault-injection-harness.md)） |
+| — 索引恢复增量算法 | [06-index-recovery](06-index-recovery.md) | 已完成（追赶三阶段、xid 水位、发布顺序、回退代价模型） |
 | 4 Intent IR / Task DAG 接口 | [architecture/03](../architecture/03-query-engine.md) | 已展开，仍需按内核接口冻结后的形状复核 |
 | 5 Hardware-Aware Storage Manager | [architecture/04](../architecture/04-hardware-path.md) | 已展开，代价模型与队列深度判据仍待参数化 |
 
 ### 21.2 接下来的三件事
 
 1. **夹具先行，然后写模块。** 先实现假设备、注入器与一致性检查器，再按 [04 §15](04-kernel-interfaces.md) 的依赖顺序实现内核模块——顺序错了，测试就只能在真机上跑。
-2. **补齐两项尚未深挖的设计**：索引恢复的增量算法（日志水位 → 索引构建水位的追赶策略与回退路径的代价估计）、硬件资源管理的实现细节（Placement 代价模型参数化、NUMA 亲和调度、io_uring 队列深度与 O_DIRECT / SPDK 的切换判据）。
+2. **补齐一项尚未深挖的设计**：硬件资源管理的实现细节（Placement 代价模型参数化、NUMA 亲和调度、io_uring 队列深度与 O_DIRECT / SPDK 的切换判据）。索引恢复的增量算法已在 [06-index-recovery](06-index-recovery.md) 完成，代价模型中的 `c_scan` / `c_point` 取值要与硬件 Profile 打通。
 3. **复核第 4、5 项与内核契约的一致性。** 索引网格与查询执行器此前是独立展开的，现在内核接口已冻结，它们的边界需要按新契约重画一遍。

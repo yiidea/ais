@@ -397,6 +397,8 @@ Startup
   └─ 10. 打开服务；滞后索引在重建完成前走回退扫描路径
 ```
 
+第 9–10 步的「滞后判定 + 后台增量重建 + 回退扫描路径」在 [06-index-recovery.md](06-index-recovery.md) 中被展开为三阶段追赶算法与代价模型。其中一条对本文的补充：追赶的**水位判定必须按 xid 而非 LSN**（[03 §1.1 R3](03-consistency-kernel.md)），因此索引侧除 LSN 水位外还维护一条 xid 水位（[06 §1.1](06-index-recovery.md)）。
+
 ### 6.2 Redo 的幂等性
 
 WAL redo 必须**幂等**，因为崩溃可能发生在“redo 过程中再次崩溃”。三种记录的处理：
@@ -601,7 +603,7 @@ I10. 迁移 M3 中途（目标 extent 部分写入）
 本文把“一致性协议与崩溃安全”落到了可编码的粒度。下一步建议按相同标准继续：
 
 1. **函数调用链与模块接口冻结**：Object Manager / Extent Manager / Mapping Manager / WAL Manager / GC 之间的精确 Rust trait 与错误类型。 → 已完成，见 [04-kernel-interfaces.md](04-kernel-interfaces.md)。
-2. **索引恢复的增量算法**：日志水位 → 索引构建水位的追赶策略，以及“滞后索引的查询回退路径”的代价估计。
+2. **索引恢复的增量算法**：日志水位 → 索引构建水位的追赶策略，以及“滞后索引的查询回退路径”的代价估计。 → 已完成，见 [06-index-recovery.md](06-index-recovery.md)。
 3. **硬件资源管理的实现细节**：Placement Manager 的代价模型参数化、NUMA 亲和调度、io_uring 队列深度与 O_DIRECT / SPDK 的切换判据。
 
 这三项完成后，实现阶段就不再需要“边写边想”。
