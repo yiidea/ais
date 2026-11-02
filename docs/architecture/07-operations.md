@@ -96,18 +96,20 @@
 | `Io{op}` | 设备标记降级 | 按 `op` 分派，见下表 | P0 / P1 | 视 `op` |
 | `Internal` | 模块层返回，公共 API 边界转成 panic / abort（[04 §2.3 C4](../chatgpt/04-kernel-interfaces.md)） | 收集现场 dump | P0 | 是（内核 bug） |
 
-`Io` 按操作类型的处置差异很大，值班时按 `op` 分派：
+`Io` 按操作类型的处置差异很大，值班时按 `op` 分派。「上层可重试」列指**上层能否重新发起同一逻辑操作**，不是指内核会不会自动重试——内核在任何情况下都不自动重试（[04 §2.4 C1](../chatgpt/04-kernel-interfaces.md)）。
 
-| `op` | 含义 | 处置 | 对外承诺 |
-|---|---|---|---|
-| `Read` | 读失败 | 返回错误；**禁止**返回脏数据或静默跳过 | 无（未读到即无承诺） |
-| `Write` | 写失败 | 事务中止，未提交版本不可见 | 无 |
-| `Flush` / `Fsync` | 落盘失败 | **提交失败**：未返回 Commit OK 的事务不算成功 | 无 |
-| `Rename` | 检查点发布失败 | 保留上一个完整检查点，后台重试 | 无 |
-| `Allocate` | 空间分配失败 | 触发 GC / 扩容 | 无 |
-| `Discard` | 空间归还失败 | 仅影响空间回收率，不影响正确性 | 无 |
+| `op` | 含义 | 处置 | 上层可重试 | 对外承诺 |
+|---|---|---|---|---|
+| `Read` | 读失败 | 返回错误；**禁止**返回脏数据或静默跳过 | 是（读是幂等的，退避后重发） | 无（未读到即无承诺） |
+| `Write` | 写失败 | 事务中止，未提交版本不可见 | 是，但只能以**整个事务**为单位重发（半帧由 CRC 检出并跳过） | 无 |
+| `Flush` / `Fsync` | 落盘失败 | **提交失败**：未返回 Commit OK 的事务不算成功 | 否（重试落盘修不好已经撕裂的帧；正确做法是让事务整体失败、由上层重新提交） | 无 |
+| `Rename` | 检查点发布失败 | 保留上一个完整检查点，后台重试 | 否（rename 不可重放；重做的是整个发布步骤，由内核后台流程负责） | 无 |
+| `Allocate` | 空间分配失败 | 触发 GC / 扩容 | 否 | 无 |
+| `Discard` | 空间归还失败 | 仅影响空间回收率，不影响正确性 | 否（重复归还无意义，回收由 GC 流程重试） | 无 |
 
 关键口径：**只有返回了 Commit OK 的事务才有「已持久」的承诺**。任何 `Io` 出现在提交路径上，都意味着该事务没有对外承诺成功，不需要也不应该做数据补偿。
+
+另一条口径：`Io` 永远不被改写为 `Retryable`（[04 §2.4](../chatgpt/04-kernel-interfaces.md)）。`Io` 表示「这次设备操作失败了」，`Retryable` 表示「内核判定这是资源级瞬时故障」；`TransactionManager::commit` 的 WAL 落盘失败必须以 `Io{op: Flush | Fsync}` 原样上抛，上层才能区分「盘掉了」和「暂时挤」。
 
 配套指标：
 
@@ -131,17 +133,19 @@ wal_durable_lag_bytes                WAL 持久水位落后量（判断设备是
 
 ### 7.1 测试债务清单
 
-[03 §9.3](../chatgpt/03-consistency-kernel.md) 要求「暂不支持」与「实现了但有 bug」在 CI 上可区分。第一版明确**不实现**的部分各有一条 xfail 测试：
+[03 §9.3](../chatgpt/03-consistency-kernel.md) 要求「暂不支持」与「实现了但有 bug」在 CI 上可区分。第一版明确**不实现**的部分各有一条 xfail 测试，风险描述与 [03 §9.2](../chatgpt/03-consistency-kernel.md) 原文一致：
 
-| 债务 | 替代方案 | 风险 | xfail 用例 | 解除条件 |
-|---|---|---|---|---|
-| Undo 日志 | 依赖 MVCC 可见性 + GC 清理 | 恢复后空间暂时未回收 | `xfail_recovery_no_undo_space_reclaimed` | 引入 undo 日志，或 GC 补偿路径稳定 |
-| 事务组提交 | 每 commit 单独 flush | 吞吐受限 | `xfail_group_commit_throughput` | 实现 group commit |
-| 死锁检测 | Wait-Die | 偶发事务中止需应用层重试 | `xfail_deadlock_detected_not_reported` | 引入死锁检测 |
-| 增量迁移同步 | M6 版本检查失败即放弃 | 热点数据迁移成功率下降 | `xfail_incremental_migration_sync` | 实现增量同步 |
-| 分布式副本仲裁 | 单机单副本 | 无法应对单盘物理损坏 | `xfail_replica_arbitration` | 实现副本仲裁 |
+| 债务 | 出处 | 替代方案 | 风险 | xfail 用例 | 解除条件 |
+|---|---|---|---|---|---|
+| Undo 日志 | 03 §9.2 | 依赖 MVCC 可见性 + GC 清理 | 恢复后空间暂时未回收，需 GC 补偿 | `xfail_recovery_no_undo_space_reclaimed` | 引入 undo 日志，或 GC 补偿路径稳定 |
+| 事务组提交 | 03 §9.2 | 每 commit 单独 flush | 吞吐受限，但语义正确 | `xfail_group_commit_throughput` | 实现 group commit |
+| 死锁检测 | 03 §9.2 | Wait-Die | 偶发的事务中止需要应用层重试 | `xfail_deadlock_detected_not_reported` | 引入死锁检测 |
+| 增量迁移同步 | 03 §9.2 | M6 版本检查失败即放弃 | 热点数据迁移成功率下降 | `xfail_incremental_migration_sync` | 实现增量同步 |
+| 分布式副本仲裁 | 03 §9.2 / §10 | 单机单副本 | 无法应对单盘物理损坏 | `xfail_replica_arbitration` | 实现副本仲裁 |
 
 xfail 用例的含义是「**已知会失败，且失败原因必须是预期的那一条**」。若 xfail 用例因为别的原因失败（例如断言写错导致 panic），CI 仍然失败——这是 xfail 相对于「注释掉这个测试」的关键区别。
+
+**解除条件在每次发布时逐条复核**：CI 只保证 xfail 用例「以预期原因失败」，不负责判断债务是否已解除——那是发布清单上的人工检查项。债务解除后必须同步删除对应的 xfail 用例，否则这条用例会长期以「预期失败」通过，掩盖同名的真实回归。
 
 ## 8. 演进路线（Roadmap）
 

@@ -36,6 +36,7 @@
 | F12 | `MemoryTierManager` | 资源层 | 内存/设备空间分配与释放 | ADR |
 | F13 | 模块调用方向 | 全局 | 允许的依赖边、禁止的反向依赖、锁顺序 | ADR |
 | F14 | 公共 API 表面 | 全局 | 公共类型只能暴露逻辑标识符，禁止暴露物理地址 | ADR |
+| F15 | `Clock` | 全局 | 内核读取时间的唯一入口：生产实现读真实时钟，测试实现读假时钟；内核代码不得直接调用 `Instant::now` / `SystemTime::now` | ADR |
 
 ### 1.3 明确不冻结的内容
 
@@ -271,6 +272,24 @@ pub trait ObjectManager: Send + Sync { /* 全部同步方法 */ }
 
 因此：**除 `StorageDevice` 与设备后端内部外，任何 trait 都不允许出现 `async fn`**。上层若需要并发访问，通过「每个连接/每个任务一个内核句柄」实现。
 
+### 2.6 时间源 `Clock`
+
+内核读时间的唯一入口。生产实现读真实时钟，测试实现读假时钟（[05 §4.1](05-kernel-test-harness.md)）。
+
+```rust
+/// 内核读时间的唯一入口（crate 内部，对外封闭）
+pub trait Clock: Send + Sync {
+    /// 单调递增的纳秒计数，起点是内核初始化时刻
+    fn monotonic_nanos(&self) -> u64;
+}
+```
+
+**C5：内核代码不得直接调用 `Instant::now()` / `SystemTime::now()`。** 所有与时间相关的逻辑（GC 老化、快照过期、长事务超时、保留策略、检查点周期）必须经由注入的 `Clock`。这条约束由 lint 强制（[05 §8](05-kernel-test-harness.md)）。
+
+**C5.1：`Clock` 返回相对单调纳秒而不是 `Instant`。** `Instant` 无法在稳定版 Rust 上任意构造，假时钟实现不了「推进到任意时刻」。返回 `u64` 纳秒后，假时钟只需维护一个计数器。
+
+**C5.2：墙上时间与单调时间分开。** 需要墙上时间（如对象创建时间戳）的场景由上层在写入时提供时间戳，内核不读墙上时钟——内核里的墙上时间会带来跨机器与跨重启的不一致。
+
 ## 三、Object Manager 与 Version Manager
 
 ### 3.1 职责边界
@@ -387,7 +406,13 @@ pub trait ExtentManager: Send + Sync {
 }
 ```
 
-**E1：Extent 的写入与事务提交分离。** `write_payload` 只把数据落到设备，不产生版本，也不受事务可见性影响；事务性由 `TxnCtx` 中的 WAL 记录与版本发布保证。是否 flush 由 `dur` 决定：`dur = Durable` 时执行 **data barrier**，`dur = Write/None` 时不 flush。
+**E1：Extent 的写入与事务提交分离。** `write_payload` 只把数据落到设备，不产生版本，也不受事务可见性影响；事务性由 `TxnCtx` 中的 WAL 记录与版本发布保证。是否 flush 由 `dur` 决定，三档对应 [§6.1 D2](#61-storagedevice) 的 `DurabilityLevel`：
+
+| `dur` | 设备侧动作 | 掉电后果 |
+|---|---|---|
+| `Durable` | 执行 **data barrier**，落持久介质 | 保留 |
+| `Write` | 下发到设备易失缓存，不落盘 | **丢失**（掉电可能丢） |
+| `None` | 不 flush，数据只在主机侧缓冲 | 丢失 |
 
 **E1.1：data barrier 与 WAL barrier 不可合并。** 前者在 `write_payload` 内部完成，后者在 `TransactionManager::commit` 的 `flush_upto(commit_lsn)` 完成；两者的先后顺序固定为「data barrier → WAL 记录 → WAL barrier」（[03 §2.4](03-consistency-kernel.md)）。
 
@@ -677,7 +702,17 @@ pub trait RecoveryManager: Send + Sync {
 
 **K2：恢复不做用户数据 undo。** 未提交事务的数据不做回滚，靠 MVCC 可见性 + GC 清理（[03 §6.3](03-consistency-kernel.md)）。**唯一的例外是未完成的迁移**：按 [03 §6.1](03-consistency-kernel.md) step 7 回滚（丢弃目标 extent，或补记 `MigrationEnd`）——这是必要的，因为映射是否已切换决定了数据是否可见。
 
-**K3：`verify` 是测试与运维共用的唯一校验实现。** 故障注入测试不能用「人眼对比」判定正确性（[03 §11.3](03-consistency-kernel.md)）。
+**K3：`verify` 是内核内唯一的校验实现，测试与运维巡检共用。** 故障注入测试不能用「人眼对比」判定正确性（[03 §11.3](03-consistency-kernel.md)）。
+
+**K3.1：故障注入测试另有一个独立于内核的外部重建器**（[05 §5.3](05-kernel-test-harness.md)），它绕过内核 API 直接扫描底层存储。两者**不互相替代**：
+
+| | `RecoveryManager::verify` | 外部重建器 |
+|---|---|---|
+| 检查什么 | 内核**自认为**的状态是否自洽（引用计数、epoch、状态机、映射合法性） | **磁盘上实际有什么**与内核的认知是否一致 |
+| 能否发现「内核自己不知道自己丢了什么」 | 否 | **是** |
+| 使用者 | 运维巡检、故障注入用例 | 仅故障注入测试 |
+
+只做前者，会漏掉「内核状态自洽但与磁盘不一致」这一类缺陷；只做后者，会漏掉内核内部不变量（引用计数、epoch）被破坏但磁盘看起来正常的情况。
 
 ## 十、Reclaimer（GC）
 
@@ -823,7 +858,7 @@ pub trait ObjectManager: private::Sealed + Send + Sync { /* ... */ }
 
 1. **对外 API 表面不得出现物理类型。** `PhysicalLocation`、`PhysicalExtentId` 只允许出现在 crate 内部的 trait（`StorageDevice`、`MappingManager`、`PhysicalExtentManager`、`IoExecutor`）里，这些 trait 不对 SDK 与上层导出；**对外暴露的 trait 全部只接受逻辑标识符**。可以用 `cargo public-api` 快照 + lint 规则守住。
 2. **错误枚举用 `#[non_exhaustive]`。** 新增变体不算破坏性变更。
-3. **内核 trait 用 `private::Sealed` 封闭，`StorageDevice` 是唯一例外。** 封闭的是内核 trait（`ObjectManager` / `VersionManager` / `MappingManager` / `PhysicalExtentManager` / `IoExecutor` / `TransactionManager` / `WalManager` / `CheckpointManager` / `RecoveryManager` / `Reclaimer` / `MigrationManager` / `MemoryTierManager`），外部无法实现，避免「半实现的 ObjectManager」破坏不变量；`StorageDevice` 必须允许外部实现后端（见 D0.2）。
+3. **内核 trait 用 `private::Sealed` 封闭，`StorageDevice` 是唯一例外。** 封闭的是内核 trait（`ObjectManager` / `VersionManager` / `MappingManager` / `PhysicalExtentManager` / `IoExecutor` / `TransactionManager` / `WalManager` / `CheckpointManager` / `RecoveryManager` / `Reclaimer` / `MigrationManager` / `MemoryTierManager` / `Clock`），外部无法实现，避免「半实现的 ObjectManager」破坏不变量；`StorageDevice` 必须允许外部实现后端（见 D0.2）。
 4. **关键 trait 中标记 `#[doc(hidden)]` 的内部方法不进入对外文档与 API 快照。**
 
 ### 14.2 CI 检查
@@ -884,11 +919,16 @@ pub trait ObjectManager: private::Sealed + Send + Sync { /* ... */ }
 
 本文冻结了接口，但不等于可以并行开工。还需要三件事：
 
-1. **夹具先行**：先写一个「假设备」（内存实现 + 可注入的故障点）与「假时钟」，让前 6 个模块能在没有真实硬件时被完整测试。夹具本身要遵守 §14.1 的约束。 → 已完成，见 [05-kernel-test-harness.md](05-kernel-test-harness.md)。
-2. **不变量可执行化**：把 [03 §10](03-consistency-kernel.md) 的五条不变量与 [architecture/02 §0.1](../architecture/02-storage-engine.md) 的 I1–I6 写成常驻测试（不是只在 CI 里跑一次）。注意 architecture/02 的 **I2 需要修订**：旧表述「提交顺序 = 日志顺序 = 版本顺序」与 [03 §1.1 R1/R3](03-consistency-kernel.md)（LSN 不描述提交顺序、可见性不用 VersionId）冲突，应改为「提交顺序 = 日志顺序；版本顺序由 xid 决定，不由 VersionId 决定」。 → 已完成，见 [05-kernel-test-harness.md §5.4](05-kernel-test-harness.md)；architecture/02 的 I2 表述已修订。
+1. **夹具先行**：先写一个「假设备」（文件支撑的持久介质 + 易失缓存分层 + 可注入的故障点）与「假时钟」，让前 6 个模块能在没有真实硬件时被完整测试。夹具本身要遵守 §14.1 的约束。 → 已完成，见 [05-kernel-test-harness.md](05-kernel-test-harness.md)。
+2. **不变量可执行化**：把 [03 §10](03-consistency-kernel.md) 的五条不变量与 [architecture/02 §0.1](../architecture/02-storage-engine.md) 的 I1–I6 全部写成 `feature = "invariants"` 下的**常驻**检查（不是只在 CI 里跑一次）：既在每次 CI 中断言，也在长时间运行的 fuzz / soak 中持续断言。其中依赖设备行为的不变量（INV2、INV5、架构 I1/I5/I6）**额外**由每一个崩溃注入用例断言——它们既是常驻检查项，也是 L2 用例的通过条件。注意 architecture/02 的 **I2 需要修订**：旧表述「提交顺序 = 日志顺序 = 版本顺序」与 [03 §1.1 R1/R3](03-consistency-kernel.md)（LSN 不描述提交顺序、可见性不用 VersionId）冲突，应改为「提交顺序 = 日志顺序；版本顺序由 xid 决定，不由 VersionId 决定」。 → 已完成，见 [05-kernel-test-harness.md §5.4](05-kernel-test-harness.md)；architecture/02 的 I2 表述已修订。
 3. **错误码到运维动作的映射表**：把 `KernelError` 的每个变体映射到「重试 / 降级 / 告警 / 人工介入」，写进 [architecture/07-operations.md](../architecture/07-operations.md)。 → 已完成，见 [architecture/07 §6.3](../architecture/07-operations.md)。
 
 这三件事完成后，第一版内核就可以在没有真实 NVMe 与 GPU 的情况下跑通端到端的写入—崩溃—恢复闭环。
 
-夹具体系还带来一条对本文的补充约束：**故障注入的语义 site 打点必须集中在 `IoExecutor` 一层**，否则打点顺序与真实 I/O 顺序不一致，注入点的语义就会漂移。这条约束记在 [ADR-0009](../adr/0009-fault-injection-harness.md)。
+但「跑通闭环」不等于「结论可信」：假设备本身是被测模型，只用它验证自己等于没验证。**假设备与真机的对拍是发布的前置条件**，且必须区分两个失效域——进程崩溃（`kill -9`，不丢 OS page cache）与掉电（真断电，丢设备写缓存），详见 [05 §7.3](05-kernel-test-harness.md)。
+
+夹具体系还带来两条对本文的补充约束，记在 [ADR-0009](../adr/0009-fault-injection-harness.md)：
+
+1. **故障注入的语义 site 分两类**：**设备级** site（对应一次设备操作）由 `IoExecutor` 一层承载，保证打点顺序与真实 I/O 顺序一致；**内核级** site（不对应任何设备操作，如 GC 摘链、内存版本发布、事务提交点）在模块内显式打点，其顺序由内核逻辑顺序保证。两类不可混用同一机制——否则逻辑级 site 的「顺序与 I/O 一致」这个前提根本不存在。
+2. **`Clock` 纳入冻结范围**（F15）：内核读取时间的唯一入口，测试实现读假时钟。这要求 `IoExecutor` / 各模块不再直接调用 `Instant::now()`。
 
