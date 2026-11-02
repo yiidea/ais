@@ -129,7 +129,7 @@ pub enum KernelError {
     Corrupted(CorruptionKind),
 
     /// 资源不足（容量、内存域、句柄）
-    ResourceExhausted { resource: ResourceKind },
+    ResourceExhausted { resource: ResourceType },
 
     /// 第一版不支持的能力
     Unsupported { feature: &'static str },
@@ -137,7 +137,7 @@ pub enum KernelError {
     /// 设备 I/O 失败
     Io { op: IoOp, source: std::io::Error },
 
-    /// 不变量被破坏：属于内核 bug，必须 panic 或 abort，不允许返回给调用方
+    /// 不变量被破坏：属于内核 bug
     Internal { code: InternalCode, detail: String },
 }
 
@@ -218,6 +218,8 @@ pub enum IoOp { Read, Write, Flush, Fsync, Rename, Allocate, Discard }
 **C2：`Io` 必须携带 `op`。** `IoOp` 至少包含 `Read` / `Write` / `Flush` / `Fsync` / `Rename` / `Allocate` / `Discard`，因为故障注入测试要按「第 N 次 flush 后 kill」来定位（[03 §11.3](03-consistency-kernel.md)）。
 
 **C3：错误里禁止出现物理地址。** `KernelError` 的任何字段都不得携带 LBA、虚拟地址或设备偏移——故障诊断需要物理位置时，由调用方用自己的 `MappingId` 再查一次映射表。
+
+**C4：`Internal` 在模块层产生，在公共 API 边界转成 panic / abort。** §2.4 允许各模块把 `Internal` 列为本模块产生的错误——这是说模块**检测到**不变量被破坏时用它携带诊断信息。但 `Internal` 不得作为普通返回值交给上层：公共 API 边界（SDK / CLI 入口）必须把 `Internal` 转成 panic 或 abort 并保留现场。否则「内核 bug」会退化成「调用方收到一个看起来像普通错误的返回值」，被上层重试或忽略。故：模块内可 `return Err(Internal{..})`，边界必须 `panic!` / `abort`，两者不矛盾。
 
 ### 2.4 错误映射规则
 

@@ -261,6 +261,7 @@ pub struct Scheduler {
 | `RecoveryManager` | 重放、幂等、尾部截断、迁移回滚 |
 | `Reclaimer` | 六条件合取的逐条判定 |
 | `MigrationManager` | M1–M10、`MappingSwitch` 提交点、并发写冲突 |
+| `MemoryTierManager` | 分层分配、释放、容量统计、`ResourceExhausted` 的触发条件 |
 | `IoExecutor` | 批量提交、错误原样上抛 |
 
 **每个错误路径必须有一条测试**（[04 §15](04-kernel-interfaces.md) 的要求）。错误断言要检查变体本身，不能只检查 `is_err()`——`KernelError` 是 `#[non_exhaustive]` 的，粒度太粗的断言在变体增加时会失去意义。

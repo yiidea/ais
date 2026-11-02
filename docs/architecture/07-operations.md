@@ -94,7 +94,7 @@
 | `ResourceExhausted` | 无 | 触发 GC 或扩容 | 容量水位 | 否（长期则扩容） |
 | `Unsupported` | 无 | 走降级路径 | 无 | 否 |
 | `Io{op}` | 设备标记降级 | 按 `op` 分派，见下表 | P0 / P1 | 视 `op` |
-| `Internal` | panic / abort，进程退出 | 收集现场 dump | P0 | 是（内核 bug） |
+| `Internal` | 模块层返回，公共 API 边界转成 panic / abort（[04 §2.3 C4](../chatgpt/04-kernel-interfaces.md)） | 收集现场 dump | P0 | 是（内核 bug） |
 
 `Io` 按操作类型的处置差异很大，值班时按 `op` 分派：
 
