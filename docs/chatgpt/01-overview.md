@@ -31,7 +31,7 @@ AI 负责决策，存储引擎负责执行，硬件负责加速。
 
 ## 一、重新定义数据库：从 SQL Database 到 AI Storage System
 
-## 1.1 传统数据库的设计模型
+### 1.1 传统数据库的设计模型
 
 传统数据库的架构主要围绕关系模型设计：
 
@@ -89,7 +89,7 @@ Disk
 
 但是，AI 工作负载带来了不同的数据访问需求。
 
-## 1.2 AI 工作负载与传统数据库的差异
+### 1.2 AI 工作负载与传统数据库的差异
 
 AI 系统的数据访问不只是传统的增删改查。
 
@@ -108,7 +108,7 @@ AI 系统的数据访问不只是传统的增删改查。
 
 它应该是一个能够直接理解和管理 AI 数据生命周期的存储系统。
 
-## 1.3 新的数据库设计目标
+### 1.3 新的数据库设计目标
 
 我们将整个系统重新定义为五个核心目标：
 
@@ -120,7 +120,7 @@ AI 系统的数据访问不只是传统的增删改查。
 
 ## 二、整体系统架构
 
-## 2.1 总体架构
+### 2.1 总体架构
 
 建议将系统划分为六个主要层次：
 
@@ -226,7 +226,7 @@ AI 不应该将这句话翻译成一条复杂 SQL。
 
 执行引擎根据 DAG 确定哪些步骤可以并行、哪些步骤需要访问 GPU、哪些数据需要从 NVMe 读取。
 
-## 2.2 核心模块及职责
+### 2.2 核心模块及职责
 
 | 模块                     | 主要职责              | 是否使用 AI |
 | ---------------------- | ----------------- | ------- |
@@ -264,7 +264,7 @@ AI 更适合参与：
 
 我们需要重新设计数据的组织形式。
 
-## 3.1 从关系数据模型转向 AI 数据对象模型
+### 3.1 从关系数据模型转向 AI 数据对象模型
 
 建议引入七种核心数据对象。
 
@@ -300,7 +300,7 @@ Embedding、语义特征、向量索引、相似度关系。
 
 它们应该统一纳入一个存储引擎，由统一的对象管理、事务、索引、缓存和持久化机制管理。
 
-## 3.2 统一的数据对象结构
+### 3.2 统一的数据对象结构
 
 可以设计统一的 Object Header：
 
@@ -391,7 +391,7 @@ Object: postgres/reorderbuffer.c
 
 AI-Native Storage 将它们作为同一个逻辑对象的不同数据视图。
 
-## 3.3 数据逻辑组织与物理组织分离
+### 3.3 数据逻辑组织与物理组织分离
 
 逻辑对象不应该直接绑定某个物理 Page。
 
@@ -433,7 +433,7 @@ Physical Extent
 
 ## 四、AI 不再生成 SQL，而是生成 Intent DAG
 
-## 4.1 为什么不能简单地用自然语言直接访问数据
+### 4.1 为什么不能简单地用自然语言直接访问数据
 
 假设用户说：
 
@@ -470,7 +470,7 @@ Intent Intermediate Representation（IIR）
 
 它是 AI 与存储引擎之间的核心协议。
 
-## 4.2 Intent DAG 设计
+### 4.2 Intent DAG 设计
 
 AI 将自然语言转化为一个有向无环任务图。
 
@@ -538,7 +538,7 @@ flowchart LR
 
 AI 负责生成，存储引擎负责验证和执行。
 
-## 4.3 Intent IR 的核心操作集合
+### 4.3 Intent IR 的核心操作集合
 
 建议第一版定义以下操作原语：
 
@@ -564,7 +564,7 @@ AI 负责生成，存储引擎负责验证和执行。
 
 它的地位类似于传统数据库中的执行计划和算子体系，但不需要直接暴露给用户。
 
-## 4.4 Intent DAG 执行模型
+### 4.4 Intent DAG 执行模型
 
 生成 DAG 后，由执行引擎进行任务拆分。
 
@@ -609,7 +609,7 @@ D 和 E 也可以并行执行。
 
 这是与传统数据库区别最大的部分。
 
-## 5.1 传统存储引擎的问题
+### 5.1 传统存储引擎的问题
 
 传统 PostgreSQL 类数据库通常采用：
 
@@ -645,7 +645,7 @@ Buffer Manager 通过 Page 管理磁盘数据。
 
 我们需要重新思考存储层。
 
-## 5.2 新的硬件感知存储架构
+### 5.2 新的硬件感知存储架构
 
 建议采用：
 
@@ -678,7 +678,7 @@ flowchart TB
 
 而是把硬件看成具有不同访问特性的资源池。
 
-## 5.3 硬件资源模型
+### 5.3 硬件资源模型
 
 每种硬件有不同的特点。
 
@@ -719,7 +719,7 @@ typedef struct HardwareResource
 
 运行时应该通过硬件探测和实际 I/O 测量持续更新。
 
-## 5.4 数据直接面向硬件的关键技术
+### 5.4 数据直接面向硬件的关键技术
 
 建议把以下技术作为底层设计基础：
 
@@ -743,7 +743,7 @@ SPDK、GPUDirect Storage、CXL 和 RDMA 作为后续可插拔硬件后端。
 
 不要在第一版就同时实现所有硬件驱动。
 
-## 5.5 内存管理：从 Buffer Pool 转向 Memory Tier Manager
+### 5.5 内存管理：从 Buffer Pool 转向 Memory Tier Manager
 
 传统 Buffer Pool 管理的是 Page。
 
@@ -803,7 +803,7 @@ AI Object
 
 这样可以避免不同工作负载之间发生严重的缓存污染。
 
-## 5.6 数据布局：从 Page 转向 Extent + Object
+### 5.6 数据布局：从 Page 转向 Extent + Object
 
 建议设计三层数据布局：
 
@@ -856,7 +856,7 @@ AI-Native Storage 不应该只有一个通用索引。
 
 建议使用统一索引管理器，管理不同数据类型的专用索引。
 
-## 6.1 索引架构
+### 6.1 索引架构
 
 ```mermaid
 flowchart TB
@@ -873,7 +873,7 @@ flowchart TB
     end
 ```
 
-## 6.2 向量索引
+### 6.2 向量索引
 
 向量索引主要解决：
 
@@ -891,7 +891,7 @@ flowchart TB
 
 具体选择取决于数据规模、更新频率、召回率和延迟要求。
 
-## 6.3 图索引
+### 6.3 图索引
 
 图索引管理：
 
@@ -921,7 +921,7 @@ ReorderBufferProcessTXN
 
 可以直接进行函数调用关系检索，而不是先检索文本再由 LLM 自行拼接关系。
 
-## 6.4 混合索引
+### 6.4 混合索引
 
 实际 AI 检索通常不是纯向量检索。
 
@@ -967,7 +967,7 @@ flowchart LR
 
 AI-Native Storage 应该以任务为核心。
 
-## 7.1 执行器总体设计
+### 7.1 执行器总体设计
 
 建议包含五个核心组件：
 
@@ -996,7 +996,7 @@ flowchart LR
     IW --> RA
 ```
 
-## 7.2 Worker 模型
+### 7.2 Worker 模型
 
 建议把 Worker 分为四类：
 
@@ -1042,7 +1042,7 @@ flowchart LR
 
 这样可以避免 CPU、GPU 和 I/O 工作负载混杂在同一个执行线程池中。
 
-## 7.3 执行粒度
+### 7.3 执行粒度
 
 不同任务应该选择不同执行粒度。
 
@@ -1081,7 +1081,7 @@ Object Retrieval
 
 这样才能充分利用 NVMe、CPU 和 GPU 的并行能力。
 
-## 7.4 Cost-Based + AI-Assisted Optimizer
+### 7.4 Cost-Based + AI-Assisted Optimizer
 
 不建议让 LLM 完全负责执行计划优化。
 
@@ -1129,7 +1129,7 @@ AI 的任务执行具有长时间运行、多步骤、异步和可能调用外�
 
 因此建议设计双层事务体系。
 
-## 8.1 两种事务
+### 8.1 两种事务
 
 | 事务类型                    | 作用            | 生命周期 |
 | ----------------------- | ------------- | ---- |
@@ -1156,7 +1156,7 @@ AI Workflow Transaction 负责：
 
 两者不能混为一谈。
 
-## 8.2 存储事务模型
+### 8.2 存储事务模型
 
 建议第一版采用：
 
@@ -1202,7 +1202,7 @@ typedef struct StorageTxn
 
 注意这里的 CommitSequence 是设计层面的提交序列概念，不代表必须使用全局递增 CSN 实现。具体实现还需要考虑并发提交、可见性和恢复。
 
-## 8.3 AI Workflow Transaction
+### 8.3 AI Workflow Transaction
 
 例如一个 Agent 执行：
 
@@ -1238,7 +1238,7 @@ stateDiagram-v2
 
 这样即使 Agent 执行到第四步时发生故障，也可以从最近一次成功的 Checkpoint 恢复。
 
-## 8.4 并发控制
+### 8.4 并发控制
 
 AI 场景中存在大量不同类型的并发：
 
@@ -1273,7 +1273,7 @@ AI-Native Storage 仍然需要一个可靠的持久化体系。
 
 不能把 DRAM 或 GPU HBM 当作持久化数据的最终存储位置。
 
-## 9.1 WAL 设计
+### 9.1 WAL 设计
 
 建议设计统一的 WAL 机制，但不再简单地以 Heap Page 变化作为唯一记录形式。
 
@@ -1323,7 +1323,7 @@ Transaction
 
 通过 Write-Ahead Logging 和提交协议保证恢复时能够判断对象版本是否有效。
 
-## 9.2 恢复流程
+### 9.2 恢复流程
 
 ```mermaid
 flowchart TB
@@ -1350,7 +1350,7 @@ flowchart TB
 
 因为 Agent 的长期记忆与短期上下文具有明显不同的生命周期。
 
-## 10.1 记忆数据模型
+### 10.1 记忆数据模型
 
 建议分成五类：
 
@@ -1388,7 +1388,7 @@ Agent Memory
             +-- 知识关系
 ```
 
-## 10.2 Memory 生命周期
+### 10.2 Memory 生命周期
 
 ```mermaid
 flowchart TB
@@ -1406,7 +1406,7 @@ flowchart TB
 
 LLM 可以判断某条信息是否值得保存，但最终的写入必须经过权限、来源、版本和数据完整性检查。
 
-## 10.3 Memory 检索
+### 10.3 Memory 检索
 
 检索时不能只看向量相似度。
 
@@ -1443,7 +1443,7 @@ AI 的最大问题不是不会生成查询，而是可能生成错误的操作�
 
 因此需要一个独立的 Policy Engine。
 
-## 11.1 安全执行架构
+### 11.1 安全执行架构
 
 ```mermaid
 flowchart LR
@@ -1470,7 +1470,7 @@ AI 生成的计划必须通过以下检查：
 | Transaction Validation | 是否满足事务约束    |
 | Data Provenance        | 数据来源是否可信    |
 
-## 11.2 高风险操作的执行策略
+### 11.2 高风险操作的执行策略
 
 建议把操作分为三种：
 
@@ -1488,7 +1488,7 @@ AI 可以建议执行操作，但不能绕过存储引擎的权限和事务机�
 
 第一版可以先实现单机存储引擎，但是架构需要为分布式扩展预留接口。
 
-## 12.1 分布式总体架构
+### 12.1 分布式总体架构
 
 ```mermaid
 flowchart TB
@@ -1510,7 +1510,7 @@ flowchart TB
     end
 ```
 
-## 12.2 分布式数据管理
+### 12.2 分布式数据管理
 
 建议支持：
 
@@ -1538,7 +1538,7 @@ flowchart TB
 
 因为向量相似度检索和图遍历可能涉及跨节点访问，需要考虑数据局部性和查询放大问题。
 
-## 12.3 分布式一致性
+### 12.3 分布式一致性
 
 建议分开处理：
 
@@ -1567,7 +1567,7 @@ flowchart TB
 3. Object API。
 4. Workflow API。
 
-## 13.1 Natural Language API
+### 13.1 Natural Language API
 
 示例：
 
@@ -1581,7 +1581,7 @@ AI 负责理解意图并调用底层引擎。
 
 但自然语言 API 更适合 Agent 或交互式场景，不应该作为所有程序访问的唯一方式。
 
-## 13.2 Intent API
+### 13.2 Intent API
 
 对于确定性的程序，可以直接提交 Intent。
 
@@ -1591,7 +1591,7 @@ result = await db.execute_intent({    "operation": "retrieve",    "target": "sou
 
 这样可以绕开自然语言理解的不确定性。
 
-## 13.3 Object API
+### 13.3 Object API
 
 提供底层对象访问：
 
@@ -1601,7 +1601,7 @@ obj = await db.objects.get(object_id)await db.objects.create(    type="document"
 
 Object API 是整个系统最基础的程序接口。
 
-## 13.4 Workflow API
+### 13.4 Workflow API
 
 支持复杂 Agent 任务：
 
@@ -1619,7 +1619,7 @@ Workflow 应支持：
 - 状态查询。
 - 结果持久化。
 
-## 13.5 是否彻底废弃 SQL？
+### 13.5 是否彻底废弃 SQL？
 
 我的建议是：
 
@@ -1657,7 +1657,7 @@ SQL 兼容层只作为边缘接口，不能反过来成为核心执行模型。
 
 建议采用 Rust 实现核心存储引擎，GPU、NVMe 驱动和 AI 模型运行时通过独立适配层接入。
 
-## 14.1 项目目录
+### 14.1 项目目录
 
 ```
 ains/
@@ -1758,7 +1758,7 @@ ains/
 └── docs/
 ```
 
-## 14.2 模块依赖原则
+### 14.2 模块依赖原则
 
 需要避免模块之间形成循环依赖。
 
@@ -1793,7 +1793,7 @@ flowchart TB
 
 下面给出第一版应该定义的核心接口。
 
-## 15.1 Object Store
+### 15.1 Object Store
 
 ```
 pub trait ObjectStore {
@@ -1824,7 +1824,7 @@ pub trait ObjectStore {
 }
 ```
 
-## 15.2 Intent Executor
+### 15.2 Intent Executor
 
 ```
 pub trait IntentExecutor {
@@ -1847,7 +1847,7 @@ pub trait IntentExecutor {
 }
 ```
 
-## 15.3 Hardware I/O
+### 15.3 Hardware I/O
 
 ```
 pub trait StorageDevice {
@@ -1894,7 +1894,7 @@ StorageDevice
 
 GPU Storage Backend 不等于普通 NVMe Device Backend。GPU HBM 是易失性设备内存，必须由专门的内存管理和数据生命周期机制管理。
 
-## 15.4 Scheduler
+### 15.4 Scheduler
 
 ```
 pub trait TaskScheduler {
@@ -1915,7 +1915,7 @@ pub trait TaskScheduler {
 }
 ```
 
-## 15.5 事务接口
+### 15.5 事务接口
 
 ```
 pub trait TransactionManager {
@@ -2007,7 +2007,7 @@ Hardware Resource
 
 建议分为五个阶段。
 
-## 17.1 五阶段实施规划
+### 17.1 五阶段实施规划
 
 Phase 1：AI-Native Storage Core
 
@@ -2078,7 +2078,7 @@ Phase 5：Distributed AI Storage
 
   交付：分布式 AI 存储集群。
 
-## 17.2 第一版 MVP 应该实现什么？
+### 17.2 第一版 MVP 应该实现什么？
 
 我建议第一版不要做一个功能庞大的数据库，而是实现一个真正能体现架构创新的最小系统。
 
@@ -2122,7 +2122,7 @@ MVP 推荐范围
 
 建议建立独立 Benchmark。
 
-## 18.1 基础存储 Benchmark
+### 18.1 基础存储 Benchmark
 
 | 测试项目                   | 验证内容     |
 | ---------------------- | -------- |
@@ -2135,7 +2135,7 @@ MVP 推荐范围
 | WAL Throughput         | WAL 写入吞吐 |
 | Recovery Time          | 崩溃恢复时间   |
 
-## 18.2 AI 工作负载 Benchmark
+### 18.2 AI 工作负载 Benchmark
 
 | 测试项目               | 验证内容         |
 | ------------------ | ------------ |
@@ -2148,7 +2148,7 @@ MVP 推荐范围
 | Multi-Agent Access | 多 Agent 并发访问 |
 | Workflow Recovery  | 长任务恢复能力      |
 
-## 18.3 硬件效率 Benchmark
+### 18.3 硬件效率 Benchmark
 
 需要重点记录：
 
@@ -2233,27 +2233,27 @@ AI-Native Storage
 
 ### AI-Native Storage System
 
-## A storage engine designed for AI workloads and hardware-native execution.
+### A storage engine designed for AI workloads and hardware-native execution.
 
 核心架构：
 
-## AI as the Interface
+### AI as the Interface
 
 Natural Language / Agent / Intent
 
-## Intent as the Execution Model
+### Intent as the Execution Model
 
 Intent IR / DAG / Task Scheduling
 
-## Object as the Data Model
+### Object as the Data Model
 
 Vector / Graph / Tensor / Memory / Document
 
-## Extent as the Storage Model
+### Extent as the Storage Model
 
 Object Layout / Version / Index / Persistence
 
-## Hardware as the Execution Foundation
+### Hardware as the Execution Foundation
 
 CPU / DRAM / GPU / HBM / NVMe / CXL
 
@@ -2269,7 +2269,7 @@ CPU / DRAM / GPU / HBM / NVMe / CXL
 
 这三个创新必须同时成立，才能真正区别于现有的向量数据库、RAG 数据库和传统数据库加 LLM 的方案。
 
-## 我建议下一步重点做的事情
+## 二十一、下一步重点做的事情
 
 不要马上开始编写全部模块。先把存储内核的几个根本性设计确定下来：
 

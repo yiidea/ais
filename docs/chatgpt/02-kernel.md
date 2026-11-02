@@ -27,7 +27,7 @@
 
 ## 一、三个核心问题的整体关系
 
-## 1.1 重新定义存储内核
+### 1.1 重新定义存储内核
 
 传统数据库的存储路径：
 
@@ -105,7 +105,7 @@ Hardware Resource
 
 需要注意，Logical Extent 和 Physical Extent 是本设计定义的两个概念，不是硬件或操作系统中的既有标准术语。
 
-## 1.2 总体内核架构
+### 1.2 总体内核架构
 
 建议将核心存储内核拆成七个模块：
 
@@ -156,7 +156,7 @@ Object → Logical Extent → Physical Extent → Physical Block
 
 其中前三层属于存储引擎的管理抽象，最后一层是硬件访问抽象。
 
-## 2.1 第一层：Object——逻辑数据对象
+### 2.1 第一层：Object——逻辑数据对象
 
 Object 是用户和 AI 系统能够理解的最小逻辑数据实体。
 
@@ -202,7 +202,7 @@ Object
 
 因此，Object 应该由统一的 Header 和专用 Payload 组成。
 
-### Object Header 设计
+#### Object Header 设计
 
 建议第一版采用如下结构：
 
@@ -291,7 +291,7 @@ Payload 则存放实际内容。
 
 这样可以在不读取大型 Payload 的情况下完成大量对象过滤。
 
-## 2.2 Object 与多模态数据的关系
+### 2.2 Object 与多模态数据的关系
 
 一个逻辑 Object 可以拥有多个数据分量。
 
@@ -343,7 +343,7 @@ struct ObjectComponent {
 
 这是 AI-Native Storage 非常重要的设计能力。
 
-## 2.3 第二层：Logical Extent——逻辑存储组织单元
+### 2.3 第二层：Logical Extent——逻辑存储组织单元
 
 Object 解决逻辑数据问题，但不能直接承担物理存储分配。
 
@@ -375,7 +375,7 @@ Tensor Object 1001
         +-- Logical Extent 4
 ```
 
-### Logical Extent 数据结构
+#### Logical Extent 数据结构
 
 ```
 struct LogicalExtent {
@@ -406,7 +406,7 @@ Logical Extent 需要支持：
 5. 独立缓存。
 6. 独立迁移。
 
-### 不同数据类型如何切分 Extent？
+#### 不同数据类型如何切分 Extent？
 
 这里不能使用完全相同的切分方式。
 
@@ -441,7 +441,7 @@ GPU 执行时只读取需要的 Tile。
 
 这里的 Tile 大小不应该固定写死，而应该根据 GPU 显存容量、计算任务、数据访问模式进行配置。
 
-### Extent 大小如何确定？
+#### Extent 大小如何确定？
 
 我建议不要规定一个全局统一的 Extent 大小。
 
@@ -468,7 +468,7 @@ GPU 执行时只读取需要的 Tile。
 
 这是为了让逻辑布局不被硬件扇区、设备块大小或 I/O 队列限制。
 
-## 2.4 第三层：Physical Extent——物理存储分配单元
+### 2.4 第三层：Physical Extent——物理存储分配单元
 
 Logical Extent 描述的是逻辑数据区域。
 
@@ -538,7 +538,7 @@ Physical Extent 需要支持：
 - 迁移。
 - 故障检测。
 
-### 一个关键设计：逻辑映射与物理映射必须分离
+#### 一个关键设计：逻辑映射与物理映射必须分离
 
 不能直接在 Logical Extent 中硬编码 NVMe LBA。
 
@@ -567,7 +567,7 @@ Extent Mapping Table
 
 读取操作必须使用一个稳定的映射版本，不能在一次读取过程中发生物理地址切换。
 
-## 2.5 第四层：Physical Block——硬件访问单元
+### 2.5 第四层：Physical Block——硬件访问单元
 
 Physical Block 是最底层的数据访问单位。
 
@@ -650,7 +650,7 @@ enum PhysicalLocation {
 
 这只是逻辑描述。实际访问时必须通过对应的硬件 Backend。
 
-## 2.6 完整的数据组织关系
+### 2.6 完整的数据组织关系
 
 以一个 AI Tensor 为例：
 
@@ -714,7 +714,7 @@ Buffer Pool
 
 应该建立统一的硬件资源管理系统。
 
-## 3.1 统一资源管理的设计目标
+### 3.1 统一资源管理的设计目标
 
 我建议定义一个核心模块：
 
@@ -756,7 +756,7 @@ flowchart TB
 
 具体 I/O 由 I/O Manager 执行。
 
-## 3.2 不同硬件的资源模型
+### 3.2 不同硬件的资源模型
 
 建议把硬件资源抽象为 Resource，而不是简单抽象成 Device。
 
@@ -819,7 +819,7 @@ Capacity 与 Performance 是两种不同的资源约束。
 | 持久性    | 否         | 否           | 是       |
 | 数据迁移成本 | 内存复制      | PCIe/NVLink | DMA/I/O |
 
-## 3.3 不能把 DRAM、GPU HBM、NVMe 当成简单的缓存层级
+### 3.3 不能把 DRAM、GPU HBM、NVMe 当成简单的缓存层级
 
 这里有一个重要的架构判断：
 
@@ -857,13 +857,13 @@ Vector Object
 
 不能简单认为三个位置的数据天然一致。
 
-## 3.4 Placement Manager：数据应该放在哪里？
+### 3.4 Placement Manager：数据应该放在哪里？
 
 这是 HRM 的核心决策模块。
 
 建议将数据放置分为三种策略。
 
-### 策略一：根据访问频率放置
+#### 策略一：根据访问频率放置
 
 例如：
 
@@ -885,7 +885,7 @@ Cold Object
 
 因为一个高频 Object 可能非常大，而且并不一定适合全部加载到 DRAM。
 
-### 策略二：根据数据类型放置
+#### 策略二：根据数据类型放置
 
 例如：
 
@@ -901,7 +901,7 @@ Cold Object
 
 这只是默认策略，实际需要根据访问模式调整。
 
-### 策略三：根据任务放置
+#### 策略三：根据任务放置
 
 这是 AI-Native Storage 与传统存储系统最大的不同之一。
 
@@ -954,7 +954,7 @@ struct PlacementRequest {
 
 最终由 Placement Manager 选择位置。
 
-## 3.5 数据放置成本模型
+### 3.5 数据放置成本模型
 
 建议建立一个确定性的成本模型：
 
@@ -986,7 +986,7 @@ $$ Used(r)+Required(o,r)\le Capacity(r)-Reserved(r) $$
 
 AI 可以分析长期工作负载，调整参数或者提出数据分层策略。
 
-## 3.6 Memory Tier Manager：统一内存管理
+### 3.6 Memory Tier Manager：统一内存管理
 
 建议把不同资源划分为 Memory Domain。
 
@@ -1019,7 +1019,7 @@ Memory Tier Manager
 - 资源压力。
 - 故障状态。
 
-### 内存分配接口
+#### 内存分配接口
 
 ```
 struct MemoryAllocationRequest {
@@ -1064,7 +1064,7 @@ struct MemoryAllocation {
 
 统一的是管理接口和资源生命周期，而不是底层分配实现。
 
-## 3.7 Cache 与 Replica 必须分离
+### 3.7 Cache 与 Replica 必须分离
 
 这是一个容易被忽视的问题。
 
@@ -1118,7 +1118,7 @@ GPU HBM 中的数据可以是当前任务的工作集，而不需要被视为持
 
 这样才能明确缓存失效、任务取消和 GPU 故障时的处理方式。
 
-## 3.8 数据迁移：Migration Manager
+### 3.8 数据迁移：Migration Manager
 
 这是硬件资源管理中最重要的执行模块。
 
@@ -1145,7 +1145,7 @@ Update Pointer
 
 必须设计一个可恢复的数据迁移协议。
 
-### 迁移状态机
+#### 迁移状态机
 
 建议定义：
 
@@ -1189,7 +1189,7 @@ struct MigrationRecord {
 }
 ```
 
-### 迁移完整流程
+#### 迁移完整流程
 
 以 NVMe → DRAM 为例：
 
@@ -1216,7 +1216,7 @@ sequenceDiagram
 
 而 NVMe 0 → NVMe 1 的持久化迁移则需要更严格的映射切换和故障恢复协议。
 
-### 持久化迁移协议
+#### 持久化迁移协议
 
 ```mermaid
 sequenceDiagram
@@ -1253,7 +1253,7 @@ sequenceDiagram
 - WAL 可以确认新映射已经生效。
 - 旧 Extent 不能立即回收，需要确认没有旧映射读者。
 
-### 如何避免迁移和并发写入冲突？
+#### 如何避免迁移和并发写入冲突？
 
 这是实际实现时必须解决的问题。
 
@@ -1281,7 +1281,7 @@ sequenceDiagram
 
 这样避免实现复杂的双写系统。
 
-## 3.9 硬件故障如何处理？
+### 3.9 硬件故障如何处理？
 
 需要区分三类故障。
 
@@ -1328,7 +1328,7 @@ WAL 解决的是逻辑故障恢复和崩溃一致性，不等于硬件冗余。
 
 这几个机制组合起来，比直接对 Extent 原地修改更容易实现可靠的一致性模型。
 
-## 4.1 为什么需要 Object Version？
+### 4.1 为什么需要 Object Version？
 
 假设一个 Agent 正在读取一份 Document。
 
@@ -1371,7 +1371,7 @@ Object 1001
 
 读事务根据自己的 Snapshot 选择可见版本。
 
-## 4.2 Object Version 数据结构
+### 4.2 Object Version 数据结构
 
 建议设计：
 
@@ -1448,7 +1448,7 @@ Version 2
 
 这可以大幅降低更新大型对象时的写放大。
 
-## 4.3 MVCC 的核心：Snapshot
+### 4.3 MVCC 的核心：Snapshot
 
 建议采用事务级 Snapshot。
 
@@ -1466,7 +1466,7 @@ T1 开始后，T2 更新了 Object 1001。
 
 T1 仍然应该读取它开始时可见的旧版本。
 
-### 版本可见性
+#### 版本可见性
 
 建议使用类似传统 MVCC 的规则：
 
@@ -1502,7 +1502,7 @@ Version 3:
 
 这就是 MVCC 的核心。
 
-## 4.4 事务管理器设计
+### 4.4 事务管理器设计
 
 建议拆分为四个内部模块：
 
@@ -1546,7 +1546,7 @@ struct StorageTransaction {
 
 如果未来需要全局提交序列，再单独引入 CSN。
 
-### Snapshot 数据结构
+#### Snapshot 数据结构
 
 ```
 struct Snapshot {
@@ -1564,7 +1564,7 @@ Snapshot 的关键职责是：
 
 确定当前事务可以看到哪些已经提交的版本。
 
-## 4.5 写入流程：Copy-on-Write
+### 4.5 写入流程：Copy-on-Write
 
 以修改一个 Tensor 为例。
 
@@ -1631,7 +1631,7 @@ sequenceDiagram
 
 而且如果采用直接数据写入 NVMe 的方式，新数据和对应元数据也必须满足崩溃恢复协议。
 
-## 4.6 Object Version 与 Extent Version 的关系
+### 4.6 Object Version 与 Extent Version 的关系
 
 这里建议明确区分两个版本体系：
 
@@ -1659,7 +1659,7 @@ Object Version 3 可能仍然使用 Extent Version 5，但它的 Mapping Version
 
 ## 五、WAL 设计：从 Page WAL 转向 Object WAL
 
-## 5.1 传统 WAL 的设计问题
+### 5.1 传统 WAL 的设计问题
 
 传统数据库 WAL 通常记录物理或逻辑层面的数据变化。
 
@@ -1693,7 +1693,7 @@ Object-aware WAL + Physical Allocation WAL。
 
 对于 Extent 分配、元数据结构和底层恢复，仍然需要物理层面的恢复信息。
 
-## 5.2 WAL 记录类型
+### 5.2 WAL 记录类型
 
 建议分成六类。
 
@@ -1762,7 +1762,7 @@ enum WalRecord {
 - 版本号。
 - 必要的依赖信息。
 
-## 5.3 WAL 与数据 Payload 分离
+### 5.3 WAL 与数据 Payload 分离
 
 这是 AI-Native Storage 非常重要的设计。
 
@@ -1802,7 +1802,7 @@ WAL 记录对象版本、Extent 分配、数据校验和以及映射变化。
 
 如果使用异步写入，还需要 Flush Barrier 和 LSN 依赖管理。
 
-## 5.4 WAL 的 LSN 管理
+### 5.4 WAL 的 LSN 管理
 
 建议统一使用 LSN：
 
@@ -1839,7 +1839,7 @@ WAL 解决了修改记录问题，但如果系统运行数月，WAL 会不断增
 
 因此需要 Checkpoint。
 
-## 6.1 Checkpoint 的目标
+### 6.1 Checkpoint 的目标
 
 Checkpoint 主要完成四件事：
 
@@ -1856,7 +1856,7 @@ Metadata Snapshot + WAL LSN Barrier + Manifest。
 
 因为系统可能存在大量并发事务和后台迁移任务。
 
-## 6.2 Checkpoint 数据结构
+### 6.2 Checkpoint 数据结构
 
 建议设计：
 
@@ -1886,7 +1886,7 @@ Checkpoint Manifest 是恢复时的重要入口。
 
 它描述了一个完整、可验证的元数据快照。
 
-### 为什么需要 Manifest？
+#### 为什么需要 Manifest？
 
 假设系统有：
 
@@ -1924,7 +1924,7 @@ Atomic Manifest Publication
 
 实际发布时需要考虑文件系统原子重命名和目录持久化语义，不能只依赖 rename 返回成功。
 
-## 6.3 Checkpoint 执行流程
+### 6.3 Checkpoint 执行流程
 
 ```mermaid
 flowchart TB
@@ -1955,7 +1955,7 @@ Checkpoint 期间可能还有事务继续提交。
 
 这类似传统数据库的 Checkpoint 原理，但需要将对象版本、映射和硬件资源状态纳入一致性范围。
 
-## 6.4 崩溃恢复流程
+### 6.4 崩溃恢复流程
 
 假设系统运行期间：
 
@@ -2000,7 +2000,7 @@ flowchart TB
 - 必须恢复其有效 Mapping。
 - 索引可以从可靠的基础状态重建或者增量恢复。
 
-## 6.5 索引恢复应该和对象恢复分离
+### 6.5 索引恢复应该和对象恢复分离
 
 例如 Vector Index。
 
@@ -2049,7 +2049,7 @@ Vector Index Rebuild
 
 这是 MVCC、Checkpoint 和 Migration 的交汇点。
 
-## 7.1 为什么不能立即删除旧版本？
+### 7.1 为什么不能立即删除旧版本？
 
 例如：
 
@@ -2080,7 +2080,7 @@ Version 3
 
 这四者不是一回事。
 
-## 7.2 引入 Epoch-based Reclamation
+### 7.2 引入 Epoch-based Reclamation
 
 建议采用：
 
@@ -2131,7 +2131,7 @@ Reclaimable
 - Checkpoint 恢复边界。
 - 备份和复制系统的保留需求（如果实现这些功能）。
 
-## 7.3 GC 的完整流程
+### 7.3 GC 的完整流程
 
 ```mermaid
 flowchart TB
@@ -2168,7 +2168,7 @@ GC 不能简单根据 `xmax` 是否已提交就释放 Extent。
 - 新数据需要写入 NVMe。
 - 同时允许其他事务读取旧版本。
 
-## 8.1 完整更新流程
+### 8.1 完整更新流程
 
 ```mermaid
 sequenceDiagram
@@ -2194,7 +2194,7 @@ sequenceDiagram
 
 实际实现中，Object Version、Mapping 和事务提交记录可以在同一个 WAL Commit Group 中组织，但必须保证所有依赖记录都在提交记录之前，并且数据持久化屏障满足要求。
 
-## 8.2 更新过程中发生崩溃怎么办？
+### 8.2 更新过程中发生崩溃怎么办？
 
 | 崩溃位置                   | 恢复结果                          |
 | ---------------------- | ----------------------------- |
@@ -2218,7 +2218,7 @@ sequenceDiagram
 
 为了避免实现时出现模块职责混乱，我建议最终确定下面的接口关系。
 
-## 9.1 Object / Extent / Mapping
+### 9.1 Object / Extent / Mapping
 
 | 模块                      | 负责什么       | 不负责什么   |
 | ----------------------- | ---------- | ------- |
@@ -2229,7 +2229,7 @@ sequenceDiagram
 | Physical Extent Manager | 物理空间分配     | AI 语义理解 |
 | Block Manager           | 硬件块定位和分配   | 事务可见性   |
 
-## 9.2 Hardware Resource Manager
+### 9.2 Hardware Resource Manager
 
 | 模块                  | 负责什么                |
 | ------------------- | ------------------- |
@@ -2242,7 +2242,7 @@ sequenceDiagram
 | Memory Tier Manager | 管理内存资源              |
 | I/O Manager         | 执行实际读写              |
 
-## 9.3 Consistency Manager
+### 9.3 Consistency Manager
 
 | 模块                  | 负责什么     |
 | ------------------- | -------- |
@@ -2296,7 +2296,7 @@ Object Manager
 | Checkpoint | Manifest + WAL Barrier       | 建立一致恢复边界   |
 | 垃圾回收       | MVCC + Epoch Reclamation     | 安全回收旧版本    |
 
-## 10.1 第一版最重要的五条一致性约束
+### 10.1 第一版最重要的五条一致性约束
 
 这些约束应该成为内核实现时的硬性不变量。
 
@@ -2350,7 +2350,7 @@ Durable Storage
 
 我建议按下面的依赖顺序开发。
 
-## Storage Kernel Development Roadmap
+### 11.1 Storage Kernel Development Roadmap
 
 1. 第一步：Object + Extent
 
@@ -2399,7 +2399,7 @@ Durable Storage
    - GPU Data Transfer
    - GPU-aware Scheduler
 
-## 11.2 每个阶段的验收条件
+### 11.2 每个阶段的验收条件
 
 | 阶段              | 必须通过的测试             |
 | --------------- | ------------------- |

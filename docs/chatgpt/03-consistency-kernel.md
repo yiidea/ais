@@ -9,8 +9,6 @@
 
 本文只讨论**单机单实例内核**。分布式复制、跨节点事务与多副本仲裁不在本文范围（见 [06-distributed.md](../architecture/06-distributed.md)）。
 
----
-
 ## 一、先确定三条总原则
 
 在讨论任何数据结构之前，先把后面所有算法都依赖的三条原则写清楚。它们与 `02-kernel.md` 第十章的“五条一致性约束”一一对应，这里给出可执行的形式。
@@ -59,8 +57,6 @@ Persist(CommitRecord) ∧ Persist(CommitRecord 的所有前驱)
 ```
 
 实现上严禁出现“先返回、后刷盘”的乐观提交路径（第一版不实现 group-commit 语义上的“提交未持久即返回”的弱化模式）。
-
----
 
 ## 二、WAL 二进制格式
 
@@ -214,8 +210,6 @@ W3. 记录一旦写入 WAL 段，内容不可修改（只允许追加和整段�
 
 第一版 flush 行为：每次 `TxnCommit` 后立即 `flush_upto(commit_lsn)`（同步组提交可后续优化）。这是最简单且最容易证明正确的选择；`group_commit` 作为可配置项留到有压测数据后再打开。
 
----
-
 ## 三、锁设计
 
 ### 3.1 锁分层
@@ -263,8 +257,6 @@ fn visible(version, snapshot, txn_status) -> bool:
 
 `committed_in_snapshot` 依赖事务状态数组（`xid -> Running/Committed/Aborted`），并用 `xmin/xmax/active_xids` 三元组做快照裁剪。这段逻辑**必须纯函数、无 IO、缓存友好**，因为它是读路径上唯一每版本都要执行的热点。
 
----
-
 ## 四、内存状态机
 
 ### 4.1 对象与版本
@@ -280,7 +272,7 @@ MappingState:  Active → Superseded → Draining → Retired
 
 ```
 S1. Pending 版本对外不可见，即使它已经写入 WAL。（可见性由 xid 状态决定，不由 WAL 存在决定）
-S2. Obsolete 不代表可回收：还需要满足 §6 的四条件判定。
+S2. Obsolete 不代表可回收：还需要满足 §8 的六条件判定。
 S3. Superseded Mapping 必须经过 Draining（等所有旧读者退出，见 §3.1 的 Epoch）才能 Retired。
 ```
 
@@ -293,8 +285,6 @@ TxnStatus 数组（内存，周期性与状态一并 checkpoint）
 ```
 
 `xmin` 之前的槽位全部确定为 Committed/Aborted，可以安全复用。环形数组的大小决定了“最老可复用 xid”，即 `SELECT xmin, xmax, active_xids` 的可回溯窗口的上界；如果这个窗口被长事务反复撑爆，应增加环大小或拒绝开始新事务（返回资源繁忙），而不是放宽可见性规则。
-
----
 
 ## 五、Checkpoint 算法
 
@@ -366,8 +356,6 @@ checkpoint 不阻塞用户路径的几点保障：
 - WAL 截断、旧目录删除都在 C4 后台进行，不影响写入。
 - 若 Phase B 期间写放大过大，触发内存淘汰，淘汰只影响缓存（Cache 角色），不改变持久状态。这就是 `02-kernel.md` §3.7 “Cache 与 Replica 必须分离” 的直接收益。
 
----
-
 ## 六、崩溃恢复算法
 
 ### 6.1 总流程
@@ -438,8 +426,6 @@ T_recover ≈ T_load(ckpt) + T_scan(WAL) + T_redo(committed_txns_in_window)
 - 目标：`T_scan(WAL) ≤ 2 × T_load(ckpt)`，否则提高 checkpoint 频率。
 - 目标：`T_recover < 10s`（1 TB 数据规模），这是第一版的硬性验收标准。
 
----
-
 ## 七、迁移（Migration）的完整协议
 
 `02-kernel.md` §3.8 已经给出状态机。本文给出**可以并发安全的精确时序与恢复规则**。
@@ -488,7 +474,7 @@ M6 的“源版本已变化”是设计上的正常路径，不是错误：
 
 ### 7.4 与 GC 的交互
 
-迁移进入 Draining 的旧 Mapping，其对应 PhysicalExtent 在**三个条件同时满足**时才可回收（见 §8）：
+迁移进入 Draining 的旧 Mapping，其对应 PhysicalExtent 除了要通过 §8 的六条件判定外，还必须额外满足**三个迁移相关条件**：
 
 1. 已完成 M8（无旧读者）；
 2. 有持久化新映射（`MappingSwitch` 已持久）；
@@ -496,9 +482,7 @@ M6 的“源版本已变化”是设计上的正常路径，不是错误：
 
 第 3 条容易被忽略：如果 checkpoint 正在从旧 Mapping 读取，提前回收会导致 checkpoint 产出损坏文件。实现上通过“GC 与 checkpoint 共享同一个 Epoch 注册表”解决：checkpoint 注册为长周期 reader，GC 必须等它退出对应 Epoch。
 
----
-
-## 八、GC 判定：四条件合取
+## 八、GC 判定：六条件合取
 
 `02-kernel.md` §7.3 已经给出流程图，这里给出精确判定，它必须是一个**合取且无捷径**的表达式：
 
@@ -520,8 +504,6 @@ reclaimable(x) :=
 
 这里的顺序不能反过来：**先注销引用、再释放物理空间**。否则会出现“读者拿到的指针指向已释放空间”的 use-after-free。
 
----
-
 ## 九、第一版实现边界与取舍
 
 ### 9.1 必须实现
@@ -532,7 +514,7 @@ reclaimable(x) :=
 | Checkpoint 影子目录 + 原子发布 | 恢复点唯一自洽入口 |
 | 前滚重放 + 幂等键 | 保证“已提交必须恢复” |
 | MappingSwitch 作为迁移提交点 | 迁移正确性的唯一关键 |
-| 四条件 GC | 防止悬挂引用 |
+| 六条件 GC | 防止悬挂引用 |
 
 ### 9.2 第一版不实现（明确列进设计债务表）
 
@@ -547,8 +529,6 @@ reclaimable(x) :=
 ### 9.3 设计债务的验收
 
 每条债务都需要在测试中有对应的**已知缺口测试**（xfail 测试），并记录在 `docs/architecture/07-operations.md §7` 的测试债务清单里。这样“暂不支持”与“实现了但有 bug”在 CI 上是可区分的。
-
----
 
 ## 十、五条硬性不变量（可测试形式）
 
@@ -570,8 +550,6 @@ INV4  旧 extent 引用清零才回收
 INV5  非持久化存储不是唯一权威副本
       assert: 任意时刻，每个可读对象的权威副本位置 ∈ {NVMe, HDD}
 ```
-
----
 
 ## 十一、故障注入测试矩阵
 
@@ -610,8 +588,6 @@ I10. 迁移 M3 中途（目标 extent 部分写入）
 - 用一个 `FaultInjector` 包装所有 `write / flush / rename`，按“第 N 次调用后 kill 进程”注入。
 - 崩溃后重启，用“运行一致性检查器”而不是靠人眼对比。
 - 同一个测试种子可复现（`seed → 注入序列 → 期望差异集`），便于 CI 回归。
-
----
 
 ## 十二、接下来还要做的三个深挖
 
