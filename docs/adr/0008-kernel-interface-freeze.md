@@ -27,11 +27,14 @@
    - `#[non_exhaustive]` 枚举，允许后续新增变体而不破坏调用方匹配；
    - 错误按「可自动重试 / 需上层决策 / 永久失败 / 内部 bug」四类划分，**内核内部不自动重试写冲突**，冲突原样返回给上层工作流；
    - 每个模块只允许返回与自身职责相关的错误子集，设备错误不得穿透到对象层；
+   - 写冲突统一命名为 `Conflict(ConflictKind::WriteConflict)`，取代 03 §3.2 中的 `RetryableConflict`；
    - 错误中禁止携带物理地址，诊断需要物理位置时由调用方自行二次查询映射表。
 
 3. **核心内核同步，设备 HAL 是唯一的 `async` 边界**。核心模块（Object / Extent / Mapping / Transaction / WAL / Checkpoint / Reclaimer / Migration / MemoryTier）全部使用同步 trait；`StorageDevice` 保持 [ADR-0004](0004-bypass-kernel-io.md) 与 [01-overview §15.3](../chatgpt/01-overview.md) 已确定的 async 形态（io_uring / SPDK 天生是完成通知模型），两者由一个同步 façade `IoExecutor` 桥接：每 NUMA 节点一个 reactor 线程，提交设备操作后阻塞等待完成，使核心内核保持「调用返回即已完成」的语义。
 
    理由：WAL 的持久化契约与临界区语义在同步模型下才容易证明；而设备 I/O 是真正需要并发的地方，不应该为了内核的简单性而放弃 io_uring 的批量提交能力。
+
+   来源说明：`StorageDevice` 的 async 形态来自 [01-overview §15.3](../chatgpt/01-overview.md)，Storage HAL 的后端选型（io_uring / SPDK / POSIX 回退）来自 [ADR-0004](0004-bypass-kernel-io.md)；ADR-0004 本身没有定义 trait 形态。
 
 4. **公共 API 表面不得暴露物理类型**：物理标识符只允许出现在 `pub(crate)` 接口中。
 

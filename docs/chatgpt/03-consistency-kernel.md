@@ -228,6 +228,7 @@ W3. 记录一旦写入 WAL 段，内容不可修改（只允许追加和整段�
 
 - **L1 只在写事务结束时释放**，读事务不取 L1（依赖 Snapshot）。
 - **L3 的读锁只覆盖“取映射”这一步**，绝不持有到 I/O 完成。读到 `MappingId` 后再用 `MappingId` 去找物理位置，即使同时发生迁移也不影响本次读取（这正是 MappingVersion 存在的理由）。
+- 读者也可以先取 `MappingVersion`、再按该版本解析物理位置；两种写法等价。冻结的接口采用后者（[04-kernel-interfaces.md §5.2](04-kernel-interfaces.md)），因为它让「读全程不发生物理切换」直接体现在签名上。
 - **L5 的持有点必须在编码时显式标注**，禁止在持锁期间做 I/O 或等待用户回调。
 
 ### 3.2 死锁预防
@@ -236,8 +237,10 @@ W3. 记录一旦写入 WAL 段，内容不可修改（只允许追加和整段�
 
 ```
 小于等于对方 xid 的事务：等待（Wait）
-大于对方 xid 的事务：中止并返回 RetryableConflict（Die）
+大于对方 xid 的事务：中止并返回 Conflict(ConflictKind::WriteConflict)（Die）
 ```
+
+> 冲突的**错误分类**由 [04-kernel-interfaces.md §2](04-kernel-interfaces.md) 统一冻结（[ADR-0008](../adr/0008-kernel-interface-freeze.md)）：写冲突一律是 `Conflict`，内核**不自动重试**，由上层工作流决定是重试整个流程、换路径还是显式暴露给用户。
 
 理由：AI 工作负载的冲突概率低于 OLTP（写入多为 append-only 的新对象），死锁检测器的复杂度和运行时开销不值得；Wait-Die 的“老事务优先”也天然对齐 MVCC 的快照老幼关系。
 
@@ -264,6 +267,7 @@ fn visible(version, snapshot, txn_status) -> bool:
 ```
 ObjectState:   Live → Deleted(committed xmax) → Reclaimable
 VersionState:  Pending → Published → Obsolete → Reclaimable
+               Pending → Aborted              （事务中止时标记，见 §6.3）
 ExtentState:   Allocated → Mapped → Unmapped → Freed
 MappingState:  Active → Superseded → Draining → Retired
 ```
@@ -274,6 +278,7 @@ MappingState:  Active → Superseded → Draining → Retired
 S1. Pending 版本对外不可见，即使它已经写入 WAL。（可见性由 xid 状态决定，不由 WAL 存在决定）
 S2. Obsolete 不代表可回收：还需要满足 §8 的六条件判定。
 S3. Superseded Mapping 必须经过 Draining（等所有旧读者退出，见 §3.1 的 Epoch）才能 Retired。
+S4. Aborted 版本永不可见，也不进入 Reclaimable；其物理 extent 进入待回收集合（见 §6.3）。
 ```
 
 ### 4.2 事务状态数组

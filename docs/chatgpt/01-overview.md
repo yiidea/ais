@@ -1940,6 +1940,10 @@ pub trait TransactionManager {
 
 这些接口是第一版的逻辑边界。真正编码时，还需要确定对象安全性、异步 I/O 生命周期、Buffer 所有权、取消安全以及 WAL 提交顺序。
 
+> **冻结状态**：本节（15.1–15.5）是**草案**，已被 [04-kernel-interfaces.md](04-kernel-interfaces.md) 取代。其中「对象安全性、异步 I/O 生命周期、Buffer 所有权」三项已在冻结文档中给出答案：`StorageDevice` 用 `#[async_trait]` 保证 dyn 兼容（D0.1）、缓冲区改为借用、`IoExecutor` 是同步 façade（§6.3）；「WAL 提交顺序」见冻结文档 §8 T2 的七步。
+>
+> `TaskScheduler`（15.4）属于**执行层**而非存储内核，其 async 形态不受「内核同步」的约束；被冻结的只有存储内核的 trait（§3–§11）。
+
 ## 十六、AI-Native Storage 与传统数据库的本质区别
 
 把整个架构归纳一下：
