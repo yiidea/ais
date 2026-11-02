@@ -1894,6 +1894,8 @@ StorageDevice
 
 GPU Storage Backend 不等于普通 NVMe Device Backend。GPU HBM 是易失性设备内存，必须由专门的内存管理和数据生命周期机制管理。
 
+> 接口的正式冻结版本（含 `IoExecutor` 同步 façade、错误模型与模块调用方向）见 [04-kernel-interfaces.md](04-kernel-interfaces.md)。
+
 ### 15.4 Scheduler
 
 ```

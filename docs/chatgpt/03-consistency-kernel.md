@@ -593,7 +593,7 @@ I10. 迁移 M3 中途（目标 extent 部分写入）
 
 本文把“一致性协议与崩溃安全”落到了可编码的粒度。下一步建议按相同标准继续：
 
-1. **函数调用链与模块接口冻结**：Object Manager / Extent Manager / Mapping Manager / WAL Manager / GC 之间的精确 Rust trait 与错误类型。
+1. **函数调用链与模块接口冻结**：Object Manager / Extent Manager / Mapping Manager / WAL Manager / GC 之间的精确 Rust trait 与错误类型。 → 已完成，见 [04-kernel-interfaces.md](04-kernel-interfaces.md)。
 2. **索引恢复的增量算法**：日志水位 → 索引构建水位的追赶策略，以及“滞后索引的查询回退路径”的代价估计。
 3. **硬件资源管理的实现细节**：Placement Manager 的代价模型参数化、NUMA 亲和调度、io_uring 队列深度与 O_DIRECT / SPDK 的切换判据。
 
