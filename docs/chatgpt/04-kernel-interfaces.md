@@ -882,8 +882,11 @@ pub trait ObjectManager: private::Sealed + Send + Sync { /* ... */ }
 
 本文冻结了接口，但不等于可以并行开工。还需要三件事：
 
-1. **夹具先行**：先写一个「假设备」（内存实现 + 可注入的故障点）与「假时钟」，让前 6 个模块能在没有真实硬件时被完整测试。夹具本身要遵守 §14.1 的约束。
-2. **不变量可执行化**：把 [03 §10](03-consistency-kernel.md) 的五条不变量与 [architecture/02 §0.1](../architecture/02-storage-engine.md) 的 I1–I6 写成常驻测试（不是只在 CI 里跑一次）。注意 architecture/02 的 **I2 需要修订**：旧表述「提交顺序 = 日志顺序 = 版本顺序」与 [03 §1.1 R1/R3](03-consistency-kernel.md)（LSN 不描述提交顺序、可见性不用 VersionId）冲突，应改为「提交顺序 = 日志顺序；版本顺序由 xid 决定，不由 VersionId 决定」。
-3. **错误码到运维动作的映射表**：把 `KernelError` 的每个变体映射到「重试 / 降级 / 告警 / 人工介入」，写进 [architecture/07-operations.md](../architecture/07-operations.md)。
+1. **夹具先行**：先写一个「假设备」（内存实现 + 可注入的故障点）与「假时钟」，让前 6 个模块能在没有真实硬件时被完整测试。夹具本身要遵守 §14.1 的约束。 → 已完成，见 [05-kernel-test-harness.md](05-kernel-test-harness.md)。
+2. **不变量可执行化**：把 [03 §10](03-consistency-kernel.md) 的五条不变量与 [architecture/02 §0.1](../architecture/02-storage-engine.md) 的 I1–I6 写成常驻测试（不是只在 CI 里跑一次）。注意 architecture/02 的 **I2 需要修订**：旧表述「提交顺序 = 日志顺序 = 版本顺序」与 [03 §1.1 R1/R3](03-consistency-kernel.md)（LSN 不描述提交顺序、可见性不用 VersionId）冲突，应改为「提交顺序 = 日志顺序；版本顺序由 xid 决定，不由 VersionId 决定」。 → 已完成，见 [05-kernel-test-harness.md §5.4](05-kernel-test-harness.md)；architecture/02 的 I2 表述已修订。
+3. **错误码到运维动作的映射表**：把 `KernelError` 的每个变体映射到「重试 / 降级 / 告警 / 人工介入」，写进 [architecture/07-operations.md](../architecture/07-operations.md)。 → 已完成，见 [architecture/07 §6.3](../architecture/07-operations.md)。
 
 这三件事完成后，第一版内核就可以在没有真实 NVMe 与 GPU 的情况下跑通端到端的写入—崩溃—恢复闭环。
+
+夹具体系还带来一条对本文的补充约束：**故障注入的语义 site 打点必须集中在 `IoExecutor` 一层**，否则打点顺序与真实 I/O 顺序不一致，注入点的语义就会漂移。这条约束记在 [ADR-0009](../adr/0009-fault-injection-harness.md)。
+

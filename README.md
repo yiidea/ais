@@ -76,6 +76,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/chatgpt/02-kernel.md](docs/chatgpt/02-kernel.md) | **核心存储内核深入设计**：Object / Extent / Physical Block 三层组织、DRAM/NVMe/GPU HBM 统一资源管理与迁移、Object Version / MVCC / WAL / Checkpoint 一致性 |
 | [docs/chatgpt/03-consistency-kernel.md](docs/chatgpt/03-consistency-kernel.md) | **一致性协议与崩溃恢复**：WAL 二进制格式、锁分层、内存状态机、Checkpoint / Recovery 算法、迁移提交点、GC 六条件判定、故障注入矩阵 |
 | [docs/chatgpt/04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md) | **内核接口冻结**：Rust trait 形状、统一错误模型与可重试性、模块调用方向与依赖禁令、五层锁顺序、公共 API 表面约束、接口变更流程 |
+| [docs/chatgpt/05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md) | **内核测试夹具与故障注入**：假设备掉电模型、语义注入点目录、假时钟与确定性调度、一致性检查器、不变量常驻断言、CI 接线 |
 
 ### 补充架构文档（本仓库新增，供实现落地）
 
@@ -87,10 +88,10 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/architecture/04-hardware-path.md](docs/architecture/04-hardware-path.md) | io_uring / SPDK 直通、内存分层、NUMA 亲和、SIMD 向量扫描、SLO 预算、回退矩阵 |
 | [docs/architecture/05-ai-native-features.md](docs/architecture/05-ai-native-features.md) | 意图级 MVCC、语义幂等、溯源图、语义 GC 与记忆固化、注意力感知返回 |
 | [docs/architecture/06-distributed.md](docs/architecture/06-distributed.md) | Meta Plane、语义路由分片、日志复制、因果租约、故障恢复 |
-| [docs/architecture/07-operations.md](docs/architecture/07-operations.md) | 可观测性、容量规划、资源治理、部署形态、运维手册、测试策略、Roadmap |
+| [docs/architecture/07-operations.md](docs/architecture/07-operations.md) | 可观测性、容量规划、资源治理、部署形态、运维手册、内核错误映射、测试策略与测试债务清单、Roadmap |
 | [docs/architecture/08-api-and-sdk.md](docs/architecture/08-api-and-sdk.md) | gRPC 契约、错误模型、SDK 设计原则与示例 |
 | [docs/architecture/09-threat-model.md](docs/architecture/09-threat-model.md) | STRIDE 威胁模型、提示注入专项、审计与取证 |
-| [docs/adr/](docs/adr/) | 8 篇架构决策记录（ADR） |
+| [docs/adr/](docs/adr/) | 9 篇架构决策记录（ADR） |
 
 ## 5. 概念速览
 
@@ -177,9 +178,14 @@ engine.intent({
 
 当前仓库处于 **设计阶段**，文档即为可落地的架构蓝图。
 
-建议的下一步（详见主文档第十七章）：
+已完成的设计冻结：
 
-1. 冻结 Phase 1 内核接口（Object / Extent / WAL / MVCC）；
+- Phase 1 内核接口（Object / Extent / Mapping / WAL / Transaction / Checkpoint / Reclaimer / Migration）→ [04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md)、[ADR-0008](docs/adr/0008-kernel-interface-freeze.md)
+- 故障注入夹具与不变量可执行化方案 → [05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md)、[ADR-0009](docs/adr/0009-fault-injection-harness.md)
+
+建议的下一步：
+
+1. **夹具先行**：先实现假设备 + 注入器 + 一致性检查器，再动内核模块；
 2. 用 Rust 实现 MVP：Object + Document + Vector、WAL + Checkpoint、MVCC、io_uring、HNSW + Metadata Index、Intent API；
 3. 建立三类 Benchmark：基础存储、AI 工作负载、硬件效率；
 4. 在第一版不实现：分布式事务、完整 GPU 后端、CXL、RDMA、自研模型——但预留扩展点。

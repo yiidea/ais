@@ -72,6 +72,53 @@
 - **索引滞后**：`freshness_lag_ms` 上升 → 检查后台构建队列 / IO 竞争。
 - **延迟尖刺**：硬件 Profile 自动降级；或临时开启「保守模式」（更少候选、更小 batch）。
 
+### 6.3 内核错误 → 运维动作映射表
+
+内核错误类型由 [04-kernel-interfaces.md §2](../chatgpt/04-kernel-interfaces.md) 冻结（[ADR-0008](../adr/0008-kernel-interface-freeze.md)）。本表把每个变体映射到「自动动作 / 告警级别 / 是否需要人工介入」，供 SDK 与值班手册直接引用。
+
+| 错误 | 内核已做的 | 自动动作 | 告警 | 人工介入 |
+|---|---|---|---|---|
+| `NotFound` | 无 | 无 | 无 | 否（业务语义） |
+| `AlreadyExists` | 无 | 无 | 无 | 否 |
+| `Conflict(WriteConflict)` | Wait-Die 判定，事务中止 | 上层工作流可重试整个流程 | `conflict_rate` | 否（持续偏高则调优） |
+| `Conflict(MappingChanged)` | 迁移放弃，源版本不变 | Placement 退避后重排 | 无 | 否 |
+| `Conflict(IntentConflict)` | 无 | 由冲突查询 API 显式暴露 | `conflict_rate` | 否（由业务决定取舍） |
+| `Retryable(DeviceBusy)` | 无 | 上层指数退避 | IO 队列深度 | 否 |
+| `Retryable(Backpressure)` | 无 | 上层降低并发 | 背压指标 | 否 |
+| `Retryable(ResourceBusy)` | 拒绝开始新事务 | 等待长事务结束 | 长事务数告警 | 是（长事务通常是应用问题） |
+| `Corrupted(WalRecordCrc)` | 扫描终止于损坏点 | 触发恢复，隔离损坏段 | P1 | 是 |
+| `Corrupted(CheckpointManifest)` | 回退到上一个 checkpoint | 从 WAL 重放 | P1 | 是 |
+| `Corrupted(ChecksumMismatch)` | 拒绝发布该版本 | 标记对象不可读 | P1 | 是 |
+| `Corrupted(VersionChainBroken)` | 恢复中止 | 从上一个 checkpoint 重放 | P0 | 是 |
+| `Corrupted(DirectoryDangling)` | 校验失败 | 记录并跳过 | P1 | 是 |
+| `ResourceExhausted` | 无 | 触发 GC 或扩容 | 容量水位 | 否（长期则扩容） |
+| `Unsupported` | 无 | 走降级路径 | 无 | 否 |
+| `Io{op}` | 设备标记降级 | 按 `op` 分派，见下表 | P0 / P1 | 视 `op` |
+| `Internal` | panic / abort，进程退出 | 收集现场 dump | P0 | 是（内核 bug） |
+
+`Io` 按操作类型的处置差异很大，值班时按 `op` 分派：
+
+| `op` | 含义 | 处置 | 对外承诺 |
+|---|---|---|---|
+| `Read` | 读失败 | 返回错误；**禁止**返回脏数据或静默跳过 | 无（未读到即无承诺） |
+| `Write` | 写失败 | 事务中止，未提交版本不可见 | 无 |
+| `Flush` / `Fsync` | 落盘失败 | **提交失败**：未返回 Commit OK 的事务不算成功 | 无 |
+| `Rename` | 检查点发布失败 | 保留上一个完整检查点，后台重试 | 无 |
+| `Allocate` | 空间分配失败 | 触发 GC / 扩容 | 无 |
+| `Discard` | 空间归还失败 | 仅影响空间回收率，不影响正确性 | 无 |
+
+关键口径：**只有返回了 Commit OK 的事务才有「已持久」的承诺**。任何 `Io` 出现在提交路径上，都意味着该事务没有对外承诺成功，不需要也不应该做数据补偿。
+
+配套指标：
+
+```
+kernel_error_total{variant}          按变体计数
+kernel_io_error_total{op,device}     按 op 与设备计数
+kernel_conflict_total{kind}          按冲突类型计数
+kernel_recovery_duration_s           恢复耗时（对应 §6 的恢复时间目标）
+wal_durable_lag_bytes                WAL 持久水位落后量（判断设备是否拖慢提交）
+```
+
 ## 7. 测试策略
 
 - **功能一致性**：所有硬件回退路径必须通过同一套语义测试。
@@ -79,6 +126,22 @@
 - **故障注入**：断电、IO 延迟注入、节点失联、日志损坏。
 - **语义正确性**：随机生成意图与对象，断言因果可见性、幂等性、溯源完整性。
 - **对抗测试**：提示注入污染存储后是否能被隔离；伪造溯源签名能否被拒绝。
+
+内核层的故障注入与不变量断言由 [05-kernel-test-harness.md](../chatgpt/05-kernel-test-harness.md) 落地：假设备 + 注入器 + 一致性检查器，覆盖 [03 §11](../chatgpt/03-consistency-kernel.md) 的 I1–I10 注入矩阵。
+
+### 7.1 测试债务清单
+
+[03 §9.3](../chatgpt/03-consistency-kernel.md) 要求「暂不支持」与「实现了但有 bug」在 CI 上可区分。第一版明确**不实现**的部分各有一条 xfail 测试：
+
+| 债务 | 替代方案 | 风险 | xfail 用例 | 解除条件 |
+|---|---|---|---|---|
+| Undo 日志 | 依赖 MVCC 可见性 + GC 清理 | 恢复后空间暂时未回收 | `xfail_recovery_no_undo_space_reclaimed` | 引入 undo 日志，或 GC 补偿路径稳定 |
+| 事务组提交 | 每 commit 单独 flush | 吞吐受限 | `xfail_group_commit_throughput` | 实现 group commit |
+| 死锁检测 | Wait-Die | 偶发事务中止需应用层重试 | `xfail_deadlock_detected_not_reported` | 引入死锁检测 |
+| 增量迁移同步 | M6 版本检查失败即放弃 | 热点数据迁移成功率下降 | `xfail_incremental_migration_sync` | 实现增量同步 |
+| 分布式副本仲裁 | 单机单副本 | 无法应对单盘物理损坏 | `xfail_replica_arbitration` | 实现副本仲裁 |
+
+xfail 用例的含义是「**已知会失败，且失败原因必须是预期的那一条**」。若 xfail 用例因为别的原因失败（例如断言写错导致 panic），CI 仍然失败——这是 xfail 相对于「注释掉这个测试」的关键区别。
 
 ## 8. 演进路线（Roadmap）
 
