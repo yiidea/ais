@@ -71,7 +71,7 @@ io_uring    SPDK/AIO   POSIX fallback   Remote/Object
 - **`SQPOLL` 模式**：减少系统调用；但在虚拟化/低 CPU 配额环境自动退避。
 - **批量 IO**：一次提交多条读，利用 SSD 内部并行度；引擎根据 IO 队列深度动态调节 batch size。
 
-  队列深度与批大小的**硬边界与调整规则**（生效 QD = min(设备上限, 域预算)、flush 槽位预留、背压返回 `Retryable(Backpressure)`）见 [07-hardware-resource-management.md §4](../chatgpt/07-hardware-resource-management.md)。
+  队列深度与批大小的**硬边界与调整规则**（生效 QD = min(设备上限, 域预算)、普通 I/O 与 flush 槽位的额度分离、batch 初值按路径给、背压返回 `Retryable(Backpressure)`）见 [07-hardware-resource-management.md §4](../chatgpt/07-hardware-resource-management.md)。
 - **直接 IO（O_DIRECT）**：日志与索引段文件绕开 page cache，避免双重缓存。
 
 ### 2.3 写路径

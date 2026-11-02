@@ -24,7 +24,7 @@
 | # | 主题 | 本文给出的东西 |
 |---|---|---|
 | 1 | 代价模型参数化 | `L` / `T` / `P` / `M` 的定义与计算式、归一化方式、参数来源表、硬约束清单、确定性要求 |
-| 2 | NUMA 亲和调度 | 设备 / 缓冲 / 执行三种绑定的判据、first-touch 规则、跨节点惩罚的进入位置、退化行为 |
+| 2 | NUMA 亲和调度 | 设备 / 缓冲 / 执行三种绑定的判据、分层缓冲绑定规则（N1 / N2 / N3）、跨节点惩罚的进入位置、退化行为 |
 | 3 | 队列深度与批大小 | QD 与 batch 的区别、初始值、上限来源、自适应规则、迟滞、背压语义、flush 槽位预留 |
 | 4 | 后端切换判据 | 启动期决策树、O_DIRECT 的独立判据、三后端的耐久语义一致性要求、运行期允许与禁止的降级 |
 
@@ -43,10 +43,11 @@
 
 因此：
 
-- **本文不向 04 的冻结清单添加任何条目。** QD、batch 大小、亲和的具体取值都留在「不冻结」侧。
+- **本文不向 [04 §1.2](04-kernel-interfaces.md) 的冻结清单（F1–F15）添加条目。** QD、batch 大小、亲和的具体取值都留在 §1.3 的「不冻结」侧。§3.3 在 [04 §6.3](04-kernel-interfaces.md) 补的 I1.1 是一条**消歧义**——把既有条款 I1 里「该 NUMA 节点」指实为「设备所在的节点」——它没有新增任何约束，不是冻结清单条目。
 - 但「这些参数**依赖什么**、**受什么硬边界约束**、**越界时返回什么**」是设计问题，本文给出答案，并由 [ADR-0010](../adr/0010-hardware-resource-management.md) 记录——**记录的是推导方式，不是具体数值**。
-- **本文不改变任何已冻结 trait 的签名。** [04 §6.2](04-kernel-interfaces.md) 的 `MemoryTierManager::allocate` 已经带 `numa_node` / `device_id` / `alignment` 参数，[04 §6.3](04-kernel-interfaces.md) 的 `IoExecutor` 已经提供 `submit_batch_and_wait`。本文的所有规则都落在这两个 trait 的**实现内部**。
-- 一处例外需要显式记下：`AccessPattern` 与 `ResourceStats` 在 [02-kernel](02-kernel.md) 与 [04 §6.2](04-kernel-interfaces.md) 中被引用但**从未定义**，而本文要用到它们。本文在 §2.3 给出**建议定义**，但它们进入 04 冻结清单需要单独一条 ADR（见 §9）。
+- **本文不改变任何已冻结 trait 的签名。** [04 §6.2](04-kernel-interfaces.md) 的 `MemoryTierManager::allocate` 的入参 `MemoryAllocationRequest`（[02-kernel §3.6](02-kernel.md)）已经带 `numa_node` / `device_id` / `alignment` / `access_pattern` 字段，[04 §6.3](04-kernel-interfaces.md) 的 `IoExecutor` 已经提供 `submit_batch_and_wait`。本文的所有规则都落在这两个 trait 的**实现内部**。
+- 一处例外需要显式记下：`AccessPattern` 与 `ResourceStats` **各自**在被引用但**从未定义**——`AccessPattern` 出现在 [02-kernel](02-kernel.md)（§3.4 的 `PlacementRequest`、§3.6 的 `MemoryAllocationRequest`），`ResourceStats` 出现在 [04 §6.2](04-kernel-interfaces.md)（`MemoryTierManager::stats` 的返回类型）。本文要用到它们，在 §2.3 给出**建议定义**，但它们进入 04 冻结清单需要单独一条 ADR（见 §9）。
+- `DeviceHealth` 同属这一类，但更隐蔽：它在 [04 §6.1](04-kernel-interfaces.md) 作为 `health()` 的返回类型出现、在 [05 §3.5](05-kernel-test-harness.md) 被当作「已在 04 冻结」的类型引用，而仓库里**没有任何地方定义它的取值**（`Degraded` / `Failed` 只在 [04 §6.1 D3](04-kernel-interfaces.md) 的散文里出现过）。本文 §2.3 的 `ResourceStats` 要用它，一并列入待冻结清单。
 
 ---
 
@@ -86,12 +87,13 @@ T(r,o,t) = size(o) / eff_bw(cur → r) + T_fix    否则
 
 | 符号 | 含义 |
 |---|---|
+| `cur` | 对象**当前所在的资源**。首次放置（新对象）时对象尚不存在，记 `cur = None` |
 | `eff_bw(cur → r)` | 从当前位置 `cur` 到目标 `r` 的**有效**带宽（已含 NUMA 距离折减，见 §3.4） |
 | `T_fix` | 一次传输的固定开销（建立通道、权限协商、注册内存等） |
 
 对 GPU HBM 目标，`eff_bw` 是 PCIe / NVLink 带宽；对 DRAM / CXL 目标，是内存带宽；对 NVMe 目标，是设备顺序读带宽。
 
-**T 是不对称的**：往快资源搬是「慢 → 快」，代价小；往慢资源搬是「快 → 慢」，代价大。
+**T 是不对称的**：往快资源搬是「慢 → 快」，代价小；往慢资源搬是「快 → 慢」，代价大。方向性来自 `eff_bw` 本身——`eff_bw(NVMe → DRAM)` 是内存带宽，`eff_bw(DRAM → NVMe)` 是 NVMe 写带宽。
 
 #### P —— 目标资源压力
 
@@ -113,14 +115,40 @@ M(r,o) = size(o)/bw_read(cur) + size(o)/bw_write(r) + M_meta
 
 `M_meta` 是元数据成本：写映射记录、更新映射版本、校验和验证。
 
-**M 的不对称性比 T 更强**，而且方向常常相反：
+**M 的字节代价是对称的，不对称的是「哪一侧变慢」。**
 
-- 往**快**资源迁（NVMe → DRAM）：读慢写快，M 小。
-- 往**慢**资源迁（DRAM → NVMe）：读快写慢，M 大。
+`M` 无论往哪个方向迁，都是「读一次 + 写一次」，总搬运量相同：
 
-这正是「降级」比「升级」更贵的物理原因，代价模型必须体现出来，否则会建议把数据无脑留在 DRAM 里——那等于把持久层掏空。
+| 方向 | 慢的一侧 | 是否阻塞写者 |
+|---|---|---|
+| 升级（NVMe → DRAM） | **读**（从 NVMe 读出来） | 否 |
+| 降级（DRAM → NVMe） | **写**（写到 NVMe） | **是** |
 
-**一个必须说清的例外**：DRAM / CXL / GPU HBM 上的数据不能承担 `Authoritative` 角色（[02-kernel §3.7](02-kernel.md)）。所以「把权威副本从 NVMe 迁到 DRAM」这个动作**根本不存在**——它不是 `M` 很大的迁移，而是根本不是一个合法操作，只可能是「加一份 Cache 副本」。代价模型不能通过「大 M 值」来表达这件事，必须由硬约束挡住（见 §2.4）。
+在「同一设备的读 / 写带宽相同」这个常用近似下，两个方向的 `M` 数值**完全相等**；即使读写带宽不同，`M` 也不含系统性的方向偏好。所以**不能靠 `M` 的大小来区分升级与降级**。
+
+真正的不对称是**慢的那一侧恰好是哪一侧**：降级时慢的是写，而写正是阻塞提交的那一侧；升级时慢的是读，不阻塞写者。因此 `M` **低估了降级的真实代价**——这不是把降级写进代价模型的理由（降级会掏空持久层，且要走 [03 §7](03-consistency-kernel.md) 的迁移协议），而是说明「升 / 降」的判断不能只靠 `M` 排序，必须由策略与协议决定。
+
+**代价模型确实会偏向「留在 DRAM」**：数据已在 DRAM 时 `T = 0`、不需要迁移时 `M = 0`，而搬到 NVMe 要付 `T` 的搬出代价与 `M` 的迁移代价。这在纯成本轴上是正确的结论——**正是它说明持久性必须由硬约束表达，而不是靠 `M` 的不对称性暗示**（见 §2.4）。
+
+**一个必须说清的例外**：DRAM / CXL / GPU HBM 上的数据不能承担 `Authoritative` 角色（[02-kernel §3.7](02-kernel.md)；[03 §10](03-consistency-kernel.md) 的 INV5 给出断言「任意时刻，每个可读对象的权威副本位置 ∈ {NVMe, HDD}」）。所以「把权威副本从 NVMe 迁到 DRAM」这个动作**根本不存在**——它不是 `M` 很大的迁移，而是根本不是一个合法操作，只可能是「加一份 Cache 副本」。代价模型不能通过「大 M 值」来表达这件事，必须由硬约束挡住（见 §2.4）。
+
+#### 首次放置与重平衡：两个不同的决策
+
+`cur` 的取值把两种决策区分开了，这一点必须写明，否则读者会以为 `C̃` 在所有场景下都有四个分量可比：
+
+| 决策 | `cur` | `T` | `M` | `C̃` 实际由谁决定 |
+|---|---|---|---|---|
+| **首次放置**（新对象，写路径） | `None` | 恒为 0（无东西可搬） | 只有 `M_meta`（写映射记录） | `α·L̃ + γ·P̃`（`T̃` 与 `M̃` 归一化后均为 0） |
+| **重平衡 / 迁移**（对象已在别处） | 具体资源 | 按方向计算 | 读一次 + 写一次 | 四个分量都参与 |
+
+两个直接后果：
+
+1. **首次放置时 `T̃ ≡ 0`**，按 §2.2 的边界规则，该轴不参与区分——权重 `β` 在写路径上不起作用，只在重平衡决策中起作用。
+2. **首次放置时 `M` 只剩常数 `M_meta`**，它对所有候选相同，归一化后同样不参与区分——权重 `δ` 在写路径上也不起作用。
+
+这不是缺陷而是分工：**写路径上的放置由「访问延迟 `L`」与「资源压力 `P`」决定**（加上 §2.4 的硬约束），这与「放置发生在写路径上、必须快」（§7.2 B1）一致；`T` 与 `M` 是为重平衡准备的。
+
+因此，如果将来要让访问模式影响**放置**（而不只是影响 batch / QD 路径选择，见 §4.7），那就是改变 `C̃` 的定义，**需要单独一条 ADR**。
 
 ### 2.2 归一化：权重必须无量纲
 
@@ -216,7 +244,28 @@ pub struct ResourceStats {
 
 `AccessPattern` 的取值必须是**闭集**且**可判定的**——它由对象头的统计信息或上层的 `PlacementRequest` 显式给出，不能由放置器自己猜。一个由放置器推断的访问模式会导致「推断 → 放置 → 观测到访问模式变化 → 重新推断」的反馈环，不确定性无法收敛。
 
-`FaultDomainId` 是本文新引入的类型。[02-kernel §3.9](02-kernel.md) 讨论了「冗余持久化副本」与「单块 NVMe 物理损坏后无法恢复数据」的风险，但没有给这个概念命名。它标识「哪些设备共享同一个失效点」——同一 PCIe switch 后的多块 NVMe、同一机架、同一供电域。它与 `AccessPattern` / `ResourceStats` 一并列入待冻结清单（见 §9）。
+**`AccessPattern` 在第一版里不进 `C̃`。** 按 §2.1 的划分，首次放置时 `T̃ ≡ 0`、`M̃` 退化为常数，真正参与排序的是 `L` 与 `P`——两者都与访问模式无关。`AccessPattern` 的实际消费者是另外两处：
+
+| 消费点 | 作用 |
+|---|---|
+| `MemoryTierManager::allocate` 的入参 `MemoryAllocationRequest.access_pattern`（[02-kernel §3.6](02-kernel.md)） | 分配器据此决定缓冲的 NUMA 归属（§3.2 的 N1 / N2 / N3） |
+| §4.7 的队列隔离 | 访问模式决定走哪条队列、用多大的 batch（`Sequential` → 读队列大 batch；`RandomPoint` → 小 batch；`WriteOnly` → 写队列） |
+
+也就是说：**访问模式影响「怎么读」，不影响「放哪里」**。对象类型（`ObjectType`）在第一版同理——它不进 `C̃`。若将来要让它们影响放置，那是改 `C̃` 的定义，需要单独一条 ADR。
+
+`ResourceStats` 与 [02-kernel §3.2](02-kernel.md) 的 `HardwareResource` 字段对得上，但名字不完全一致，映射如下：
+
+| `ResourceStats`（本文建议） | `HardwareResource`（02-kernel §3.2） | 说明 |
+|---|---|---|
+| `capacity` | `capacity` | 一致 |
+| `used` | `allocated` | **名字不同、含义相同**：本文用 `used`，02-kernel 用 `allocated`，指同一件事（已被占用的容量） |
+| `reserved` | `reserved` | 一致 |
+| （不单独存） | `available` | = `capacity − allocated − reserved`，由上面三个字段导出 |
+| — | `bandwidth_estimate` / `latency_estimate_ns` | 02-kernel 已有，是 `L_dev` 与 `eff_bw` 的现成来源（§2.3 的参数来源表） |
+| `numa_node` | `numa_node` | 一致（都是 `Option<u32>`） |
+| — | `device_id` | 02-kernel 用它标出资源背后的设备；本文的 `ResourceStats` 以 `ResourceId` 标识资源、设备归属由资源注册表维护，故不重复存 |
+
+`FaultDomainId` 是本文新引入的类型。[02-kernel §3.9](02-kernel.md) 讨论了「冗余持久化副本」与「单块 NVMe 物理损坏后无法恢复数据」的风险，但没有给这个概念命名。它标识「哪些设备共享同一个失效点」——同一 PCIe switch 后的多块 NVMe、同一机架、同一供电域。它与 `AccessPattern` / `ResourceStats` / `DeviceHealth` 一并列入待冻结清单（见 §9）。
 
 ### 2.4 硬约束先过滤，代价模型只排序
 
@@ -227,13 +276,15 @@ pub struct ResourceStats {
 | 约束 | 判据 | 出处 |
 |---|---|---|
 | 容量 | `used(r) + required(o,r) ≤ capacity(r) − reserved(r)` | [02-kernel §3.5](02-kernel.md) |
-| 持久性 | `Authoritative` 副本只能在 `Nvme` / `Hdd` 上 | [02-kernel §3.7](02-kernel.md) |
+| 持久性 | `Authoritative` 副本只能在 `Nvme` / `Hdd` 上 | [02-kernel §3.7](02-kernel.md)；断言见 [03 §10](03-consistency-kernel.md) INV5 |
 | 角色 | `Cache` / `WorkingSet` 可以放在任意资源；`Replica` 需要故障域独立 | [02-kernel §3.7](02-kernel.md) |
-| 故障域 | 同一故障域内的两份不构成冗余 | [02-kernel §3.9](02-kernel.md) |
+| 故障域 | 同一故障域内的两份不构成冗余 | **本文新增**——动机见 [02-kernel §3.9](02-kernel.md) 的「单块 NVMe 物理损坏后无法恢复」风险，但该节从未给这个概念命名；概念与类型见本文 §2.3 |
 | 格式与对齐 | 设备支持的块大小、对齐要求、是否支持 discard | [04 §6.1](04-kernel-interfaces.md) |
 | 设备健康 | `health() != Failed` | [04 §6.1](04-kernel-interfaces.md) D3 |
 | 耐久要求 | 放置所需的耐久等级 ≤ `max_durability(r)`。降级到 `Write` 的设备仍可承担 `Cache` / `WorkingSet`，但不能承接要求 `Durable` 的放置 | [04 §6.1](04-kernel-interfaces.md) D2 / D3 |
 | 域配额 | 前台 / 后台 / 其它域的 IO 与容量预算未耗尽 | [architecture/04 §6](../architecture/04-hardware-path.md) |
+
+**一条已声明但尚不可执行的约束**：故障域那一条依赖本文新引入的 `FaultDomainId`（§2.3）。在该类型定义完成、并接入 `ResourceStats` 之前，这条约束**无法在代码里生效**——实现期必须先补这个类型，否则「副本故障域独立」只是一句没人兑现的话（见 §9）。
 
 **第二步：在可行集 `F` 上按 `C̃` 排序，取最小者。**
 
@@ -260,7 +311,9 @@ r* = argmin_{r ∈ F} C̃(r,o,t)      并列时按 ResourceId 升序打破平局
 
 **这是本文最重要的一条设计决策（HRM4）。**
 
-放置决策一旦做出，就随映射记录写进 WAL（[03 §2.3](03-consistency-kernel.md) 的 Extent / Mapping 记录族 `0x20–0x23`，物理位置 `PhysicalLocation` 就在其中）。
+放置决策一旦做出，就随映射记录写进 WAL（[03 §2.3](03-consistency-kernel.md) 的 Extent / Mapping 记录族 `0x20–0x23`）。
+
+需要说清 WAL 里存的**是什么**：`ExtentAllocBody` 记的是 `device_id` + `device_offset` + `length`，**不是** [02-kernel §2.5](02-kernel.md) 的 `PhysicalLocation` 枚举——后者带 `namespace_id` / `lba` / `numa_node` 等字段，是**解析之后**的物理位置视图。恢复期由 `device_id` + `device_offset` 解析出物理位置，解析规则归设备层（[04 §6.1](04-kernel-interfaces.md)）。这个区分不是抠字眼：WAL 是**设备无关**的，它记的是「哪个设备的哪个偏移」，而 `PhysicalLocation::Nvme` 里的 `namespace_id` / `lba` 是**具体设备**的寻址概念，两者的转换发生在设备层，写 WAL 时还没有、也不该有。
 
 因此：
 
@@ -288,18 +341,28 @@ r* = argmin_{r ∈ F} C̃(r,o,t)      并列时按 ResourceId 升序打破平局
 [06 §8](06-index-recovery.md) 明确指出：「`c_scan` 与 `c_point` 的取值来自硬件实测，代价模型参数化必须与硬件 Profile 打通。」本文给出它们的定义——**它们不是新参数，而是本文 `L` / `T` 的组合**：
 
 ```
-c_point(r, o) = L(r,o,t) + T(r,o,t)
-                 语义：对象已在 r 上时 = L；否则 = 读回代价 + 传输代价
+c_point(r, o) = L_dev(r) × 1 + T_point(r,o)
+                 语义：按索引命中项定位并取回**一个逻辑 extent** 的成本
+                       —— 一次设备访问 + 一次传输。不含把对象的其余 extent 顺序读完。
 
-c_scan(r, o)  = ⌈size(o) / optimal_io_size(r)⌉ × L_dev(r) + T_scan_payload
-                 语义：顺序扫过整个对象，含 payload 的一次性读取
+c_scan(r, o)  = ⌈size(o) / optimal_io_size(r)⌉ × L_dev(r) + T_scan_payload(r,o)
+                 语义：把该对象的**全部 extent 顺序读完**（payload 全量扫描）的成本
 ```
 
-其中 `T_scan_payload` 是 payload 若不在 `r` 上时的额外搬运代价。
+其中 `T_point` 是一次定位访问的传输代价（数据已在 `r` 上时为 0）；`T_scan_payload` 是 payload 若不在 `r` 上时的额外搬运代价。两者都以**微秒**为单位，与 `L` / `T` 同一量纲，可以直接相加。
 
-区别：`c_point` 只算「拿到这个对象」，`c_scan` 算「扫完这个对象」。两者都以**微秒**为单位，与 `L` / `T` 同一量纲，可以直接相加。
+**`c_point` 不能被定义成「读完整个对象」。** 这不是命名问题，是 [06 §3.2](06-index-recovery.md) 的 A / B 策略比较能不能成立的问题：
 
-对外接口：
+| | FullScan（策略 A） | SparseAssist（策略 B） |
+|---|---|---|
+| 每个候选的成本 | `c_scan`——必须把对象的 extent 全部顺序读完才能过滤 | `c_point`——按索引命中项取回一个 extent |
+| 候选数 | `n_lag × selectivity` | `K` |
+
+如果 `c_point` 定义成 `L × L_size + T`（即「读完整个对象」，与 `c_scan` 只差一个搬运项），两个数在代数上几乎相同，A / B 的比较就退化成「候选数之比」——**代价模型将无法解释为什么索引比全扫快**，而这恰恰是 06 §3.2 存在的理由。
+
+**差值是 A / B 可区分的前提，而差值会随对象大小自然收敛**：对象只有一个 extent 且大小接近 `optimal_io_size` 时，`c_point` 与 `c_scan` 数值接近，此时 A / B 的差别只来自候选数——**这与事实相符**（对象越小，索引的优势越小）。模型不应在「没有差别的地方」制造差别。
+
+内核内部接口（**不进入对外 API 表面**，见 [04 §14.1](04-kernel-interfaces.md) 规则 1）：
 
 ```rust
 /// 供规划器使用的、针对某个对象的查询代价
@@ -315,7 +378,7 @@ pub struct ObjectCosts {
 
 注意 `assumed_resource` 是**估算所依据的资源**，不是「对象实际在哪儿」——规划器用这个值做策略选择（A / B / C），不用于任何正确性判定（[06 §3.2](06-index-recovery.md) 的原则同样适用于此）。
 
-`ObjectCosts` 是**内核内部**给规划器用的类型，不进入对外 API 表面（[04 §14.1](04-kernel-interfaces.md) 规则 1）。它携带的 `ResourceId` 是资源域标识，不是 `PhysicalLocation`——不暴露 LBA、偏移或设备内部地址。
+`ObjectCosts` 携带的 `ResourceId` 是资源域标识，不是 `PhysicalLocation`——不暴露 LBA、偏移或设备内部地址（[04 §1.2 F14](04-kernel-interfaces.md)、[04 §14.1](04-kernel-interfaces.md) 规则 1）。
 
 ---
 
@@ -331,15 +394,15 @@ pub struct ObjectCosts {
 | **缓冲绑定** | I/O 缓冲区分配在哪个节点的内存 | **本文的规则**（§3.2） |
 | **执行绑定** | 哪个线程在跑（reactor 在哪、worker 在哪） | 启动时确定，运行期不变 |
 
-[04 §6.3](04-kernel-interfaces.md) 的 I1 只规定了「每 NUMA 节点一个 reactor 线程」——那是**执行绑定**的一部分，且只说了有多少个、没说**投给谁**。本节补齐剩下的两块。
+[04 §6.3](04-kernel-interfaces.md) 的 I1 只规定了「每 NUMA 节点一个 reactor 线程」——那是**执行绑定**的一部分，且只说了有多少个、没说**投给谁**（[04 §6.3 I1.1](04-kernel-interfaces.md) 已把「该 NUMA 节点」消歧义为设备所在的节点，见 §3.3）。本节补齐缓冲绑定的判据。
 
-### 3.2 缓冲绑定规则（first-touch）
+### 3.2 缓冲绑定规则：分层绑定
 
-Linux 的 first-touch 规则：**一个物理页归属于第一次写它的线程所在的 NUMA 节点**。这条规则把「谁分配缓冲区」和「缓冲区属于哪个节点」绑定了，于是问题变成：**谁分配？**
+Linux 的 first-touch 规则：**一个物理页归属于第一次写它的线程所在的 NUMA 节点**。这条规则把「谁分配缓冲区」和「缓冲区属于哪个节点」绑成了同一件事——但它只回答了**页归属由谁决定**，没回答**该由谁分配**。所以缓冲区绑定必须写成**分层规则**：不同情形，分给不同的地方。
 
 **第一原则：用放置消除跨节点，而不是优化跨节点。** 如果数据本来就常驻在消费它的 worker 所在节点，就没有 DMA、没有跨节点、什么惩罚都没有。所以 NUMA 亲和的首要手段是**把数据放到对的地方**（home node 固定），缓冲区摆放只是第一原则用尽之后的补救。
 
-第一原则用尽之后（数据必须从设备取），按下面的规则分层：
+第一原则用尽之后（数据必须从设备取），按下面的规则分层（**HRM5**）：
 
 | 规则 | 情形 | 缓冲落在 | 理由 |
 |---|---|---|---|
@@ -356,7 +419,7 @@ Linux 的 first-touch 规则：**一个物理页归属于第一次写它的线�
 
 **home node 与 §3.3 的 reactor 路由是两条不同的规则，不冲突**：home node 决定**数据常驻在哪个内存域**、内存命中时**缓冲在哪**；reactor 路由决定**设备操作交给哪个节点的线程执行**。两者都服务于「靠近数据」，但作用对象不同——一个是数据的位置，一个是执行者的位置。
 
-home node 是**放置结果的一部分**，同样写进 WAL（§2.6 的规则不变：已落盘数据的 home node 由 WAL 决定，不重新推导）。新增该字段属于 WAL 格式变更，按 [04 §14.3](04-kernel-interfaces.md) 的流程走。
+home node 是**放置结果的一部分**，同样写进 WAL（§2.6 的规则不变：已落盘数据的 home node 由 WAL 决定，不重新推导）。新增该字段属于 **WAL 记录体的字段增补**，走 [03 §2.2](03-consistency-kernel.md) 的帧格式兼容机制——帧头的 `reserved` 字段与 `flags` 位是版本兼容的载体，而 [04 §1.3](04-kernel-interfaces.md) 对序列化格式的要求正是「与 [03 §2.2](03-consistency-kernel.md) 的帧格式兼容」。只有在同时改动 trait 签名时，才另外走 [04 §14.3](04-kernel-interfaces.md) 的接口变更流程。
 
 ### 3.3 投递判据：投给设备所在节点的 reactor
 
@@ -368,7 +431,7 @@ home node 是**放置结果的一部分**，同样写进 WAL（§2.6 的规则�
 2. **唤醒调用方是一次性的小开销**。调用方在另一个节点时，完成通知要跨节点一次，代价约等于一次 cache line 失效——它**不随数据量增长**。
 3. **DMA 是大头**。把 ring 和 buffer 都放对（ring 随 reactor，buffer 随 N2 的设备节点），DMA 就走近端路径。
 
-对照 I1 的原文「提交时把操作投递给该 NUMA 节点上的 reactor」——中文里「该 NUMA 节点」是有歧义的（是「调用方所在的」还是「设备所在的」？）。本文把它定为**设备所在的**。
+对照 I1 的原文「提交时把操作投递给该 NUMA 节点上的 reactor」——中文里「该 NUMA 节点」是有歧义的（是「调用方所在的」还是「设备所在的」？）。这一歧义由 [04 §6.3 I1.1](04-kernel-interfaces.md) 消解为**设备所在的节点**，本文的规则与之一致。
 
 节点内的分派：一个节点可能有多个设备（多控制器 NVMe）。reactor 按节点分组，节点内再按 `device_id` 分派到各自的 queue。
 
@@ -381,7 +444,11 @@ home node 是**放置结果的一部分**，同样写进 WAL（§2.6 的规则�
 | 惩罚 | 进入哪个量 | 形式 |
 |---|---|---|
 | **DMA 跨节点**（远端内存被设备读写） | `T` 的 `eff_bw` 折减 | `eff_bw(cur → r) = nominal_bw × numa_factor` |
-| **CPU 跨节点访问远端内存** | `L` 的排队项 + `T` 的 CPU 侧搬运 | `numa_factor` 同样从实测得出 |
+| **CPU 跨节点访问远端内存** | **内存型资源的 `L_dev`**（按访问方节点取值）+ `T` 的 CPU 侧搬运 | `numa_factor` 同样从实测得出 |
+
+**`L_dev(r)` 在多节点下不是标量，而是 `(访问方节点, r)` 的函数。** DRAM / CXL 的访问延迟本身就强烈依赖访问方 CPU 与该内存域是否同节点——本地与跨节点可能差数倍。设备型资源（NVMe）的**设备侧**延迟与节点无关，它的跨节点影响落在 CPU 侧（提交路径、完成通知），计入 `T` 的 CPU 侧搬运。单节点时 `L_dev` 退化为标量，与 Hardware Profile 的 `device_latency_ns` 等值。
+
+**`L` 不含排队项**（§2.1）：排队延迟由 `P` 表达，并在运行时由 §4 的 QD 机制解决，不进代价模型。
 
 `numa_factor` 的取值**必须实测**，不能写成常量。经验上远端访问的延迟与带宽劣化程度差异很大，取决于 CPU 型号、NUMA 拓扑、是否有 UPI / CXL 互联、访问粒度。写成「远端 = 1.5×」这种常量在另一台机器上就是错的。
 
@@ -439,24 +506,45 @@ numa_bandwidth_factor[from][to]    带宽倍率
 ### 4.2 上限来源
 
 ```
+qd_budget(r)    = qd_usable(r) + qd_flush_reserve(r)
 qd_effective(r) = min( qd_device(r), qd_budget(r) )
 ```
 
-| 上限 | 来源 |
+| 量 | 含义与来源 |
 |---|---|
-| `qd_device(r)` | 设备上报的最大在途数。NVMe 从 identify-controller 读 `NVMOSQ` / `NVMOCQ`（**每队列**的最大在途数）与 `NVSQ` / `NVCQ`（控制器支持的队列数）；本引擎按每设备一个队列使用，因此上限取 `min(NVMOSQ, NVMOCQ)`，再与 `/sys/block/<dev>/queue/nr_requests`（内核侧保守界）取小 |
-| `qd_budget(r)` | 域配置：前台 / 后台 / 其它域在这台设备上的份额之和。多个域共享设备时按域分配（[architecture/04 §6](../architecture/04-hardware-path.md) 的 token bucket） |
+| `qd_device(r)` | **设备能力的硬顶**：设备上报的最大在途数。NVMe 从 identify-controller 读 `NVMOSQ` / `NVMOCQ`（**每队列**的最大在途数）与 `NVSQ` / `NVCQ`（控制器支持的队列数）；本引擎按每设备一个队列使用，因此上限取 `min(NVMOSQ, NVMOCQ)`，再与 `/sys/block/<dev>/queue/nr_requests`（内核侧保守界）取小 |
+| `qd_usable(r)` | **普通读写可用的在途数**：域配置的前台 / 后台 / 其它域在这台设备上的份额之和。多个域共享设备时按域分配（[architecture/04 §6](../architecture/04-hardware-path.md) 的 token bucket） |
+| `qd_flush_reserve(r)` | 为 flush 预留的槽位数，至少 1（§4.6） |
+| `qd_budget(r)` | **域预算的总容量** = `qd_usable(r) + qd_flush_reserve(r)`，普通读写与 flush 各占其一份 |
+| `qd_effective(r)` | **生效的总在途上限** = `min(qd_device(r), qd_budget(r))` |
+
+**四个量的分工必须分清**，因为 §4.3 的自适应与 §4.5 的背压作用在不同的量上：
+
+- `qd_device` 是**能力**，不随负载变；
+- `qd_usable` 是**份额**，由域配置给出（后台重建可暂停 → 份额可回收）；
+- `qd_effective` 是**硬上限**，自适应永远不能突破它；
+- **普通 I/O 的在途上限是 `qd_usable`，不是 `qd_effective`**——后者含 flush 的预留槽位，普通读写不得占用。
 
 **初始值**：
 
 ```
 qd_initial(r) = min(qd_effective(r), 32)
-batch_initial = min(qd_initial(r), 16)
 ```
 
 **为什么从 32 起步而不是 64/128**：SSD 内部并行度有限，队列过深会让尾延迟上升（[architecture/04 §1](../architecture/04-hardware-path.md) 的目标是 4 KB 冷读 P99 < 30 µs）。队列越深，单个请求排在队尾的时间越长。保守起步 + 实测调节，比一上来就打满安全。
 
-**写路径用更小的 batch**（[architecture/04 §6](../architecture/04-hardware-path.md) 已定）：写路径延迟优先、batch 取 1–4；读路径吞吐优先、batch 取 16–64。
+**batch 初值按路径给，不是一个全局值**（路径划分见 §4.7）：
+
+| 路径 | batch 初值 | batch 区间 | 理由 |
+|---|---|---|---|
+| 前台读 | 16 | 16–64 | 吞吐优先 |
+| 前台写 | 4 | 1–4 | 延迟优先（[architecture/04 §6](../architecture/04-hardware-path.md) 已定） |
+| 后台重建 | 32 | 32–128 | 吞吐优先，且可暂停 |
+| WAL / flush | 1 | — | 屏障，一次一个（§4.6） |
+
+每条路径的 batch 初值还不得超过它自己的 QD 份额：`batch_initial(p) = min(batch_initial(p), qd_usable(p))`。
+
+**一个全局的 `batch_initial = 16` 会同时违反写路径的 1–4 与后台重建的 32–128**——三条路径的优先级不同（延迟 / 吞吐 / 吞吐），不能用同一个初值。
 
 ### 4.3 自适应规则
 
@@ -469,10 +557,12 @@ batch_initial = min(qd_initial(r), 16)
 
 | 条件 | 动作 |
 |---|---|
-| `inflight ≥ 0.9 × qd_effective` **且** `lat_p99 ≤ 0.8 × SLO` | **提高** QD：×1.5，向上取整到 2 的幂，上限 `qd_effective(r)` |
+| `inflight ≥ 0.9 × qd_usable` **且** `lat_p99 ≤ 0.8 × SLO` | **提高** QD：×1.5，向上取整到 2 的幂，上限 `qd_effective(r) − qd_flush_reserve(r)` |
 | `lat_p99 > 1.5 × baseline_p99` **且** 持续 N 个窗口 | **降低** QD：×0.7，向下取整到 2 的幂，下限 1 |
 | `lat_p99 > SLO` **且** `util(r) < 0.6` | **不动**。设备没吃满 → 瓶颈不在设备（可能在 CPU、锁、或上游），调 QD 只会更糟 |
-| `inflight < 0.5 × qd_effective` **且** `lat_p99` 远低于 SLO | **不动**。没排队，无需更深队列 |
+| `inflight < 0.5 × qd_usable` **且** `lat_p99` 远低于 SLO | **不动**。没排队，无需更深队列 |
+
+**自适应调的是普通读写的在途额度 `qd_usable`，不是 `qd_effective`。** 后者含 flush 的预留槽位——拿它做阈值有两个后果：「提高 QD」这一条**永远触发不了**（普通读写的在途数被 `qd_usable` 挡着，到不了 `0.9 × qd_effective`）；而且把普通 I/O 的额度推向含预留槽位的上限，正是 §4.6 要防的「flush 被挤掉」。因此普通读写的自适应上限是 `qd_effective(r) − qd_flush_reserve(r)`。
 
 第三条是**最容易被忽略、也最重要**的一条。「延迟超标」不等于「队列太浅」——如果设备利用率只有 50%，说明请求没进来或者卡在别处，此时加大队列只会增加内存占用和尾延迟。**必须先归因，再调整。**
 
@@ -496,9 +586,11 @@ batch_initial = min(qd_initial(r), 16)
 `IoExecutor::submit_and_wait` 的语义是**同步阻塞**（[04 §6.3](04-kernel-interfaces.md) I2），所以队列满时的默认表现是等待。但等待必须有上限：
 
 ```
-if inflight >= qd_effective(r) and 等待时长 > backpressure_deadline:
+if inflight_ordinary >= qd_usable(r) and 等待时长 > backpressure_deadline:
     return Err(Retryable(Backpressure))
 ```
+
+**这里必须用 `qd_usable(r)` 而不是 `qd_effective(r)`。** `qd_effective` 含 flush 的预留槽位；若普通读写可以占满 `qd_effective`，预留槽位就被吃掉了——flush 会被普通 I/O 饿死，§4.6 的预留机制形同虚设。普通读写的在途上限就是 `qd_usable`；flush 走独立的优先级队列与预留槽位，两者的额度不共享。
 
 **用 `Retryable(Backpressure)` 而不是 `Io { op }`**：`Io` 表示设备错误（[04 §2.4](04-kernel-interfaces.md) 的映射规则），而背压是资源级瞬时状态，正是 `RetryReason::Backpressure` 的定义。
 
@@ -520,21 +612,24 @@ if inflight >= qd_effective(r) and 等待时长 > backpressure_deadline:
 因此：
 
 ```
-qd_budget(r) = qd_usable(r) + max(1, qd_flush_reserve(r))
+qd_flush_reserve(r) >= 1
+qd_budget(r)         = qd_usable(r) + qd_flush_reserve(r)      （定义见 §4.2）
 ```
 
 `qd_flush_reserve` 至少为 1；写密集的域应当更高。
+
+**预留是从设备额度里划出来的，不是额外加的**：`qd_budget` 本身不应超过 `qd_device(r)`，否则「预留」就变成了「超发」——普通 I/O 与 flush 合起来能超出设备能力，flush 的屏障语义照样会被拖垮。设备额度越紧，预留对普通 I/O 的挤压越明显；B6 量的就是这个挤压的代价。
 
 **flush 优先于普通读写入队**：当 flush 在等待槽位时，新来的普通读写不得抢占它的位置（否则 flush 可能被新来的读写无限推迟——饥饿）。实现上 flush 走一个**独立的优先级队列**，在槽位释放时优先分配。
 
 ### 4.7 队列隔离
 
-| 队列 | batch | 目标 | 隔离方式 |
-|---|---|---|---|
-| 前台读 | 16–64 | 吞吐 | 独立 QD 预算 |
-| 前台写 | 1–4 | 延迟 | 独立 QD 预算 |
-| 后台重建（索引段合并等） | 32–128 | 吞吐 | 独立 QD 预算 + 可暂停 |
-| WAL / flush | 见 §4.6 | 屏障 | 优先级队列 + 预留槽位 |
+| 队列 | batch 初值 | batch 区间 | 目标 | 隔离方式 |
+|---|---|---|---|---|
+| 前台读 | 16 | 16–64 | 吞吐 | 独立 QD 预算 |
+| 前台写 | 4 | 1–4 | 延迟 | 独立 QD 预算 |
+| 后台重建（索引段合并等） | 32 | 32–128 | 吞吐 | 独立 QD 预算 + 可暂停 |
+| WAL / flush | 1 | — | 屏障 | 优先级队列 + 预留槽位（§4.6） |
 
 [architecture/04 §6](../architecture/04-hardware-path.md) 已定「前台读与后台重组走不同 HAL 队列」「每个域可设置 IO 权重，I/O 调度使用 token bucket 限流」。本文把它落到 **QD 预算**这一层：队列隔离的实质是**在飞操作数的分配**，而不是物理隔离（物理隔离只有专用部署才有）。
 
@@ -689,17 +784,22 @@ O_DIRECT **不是后端选择**，是**每个文件的选择**。io_uring / SPDK
 
 ## 六、不变量 HRM1–HRM8
 
-与 [03 §10](03-consistency-kernel.md) 的不变量 `INV1`–`INV5`、[05](05-kernel-test-harness.md) 的注入点 `注入 I1`–`I10`、[06](06-index-recovery.md) 的不变量 `A1`–`A10` 是互不重叠的命名空间。用 `HRM` 前缀而不是继续用 `I*`，是因为仓库里 `I` 已经被两套东西占用了（[04 §6.3](04-kernel-interfaces.md) 的 `I1`–`I5` 是 `IoExecutor` 契约，[05](05-kernel-test-harness.md) 的 `注入 I1`–`I10` 是故障注入点）。
+与 [03 §10](03-consistency-kernel.md) 的不变量 `INV1`–`INV5`、[05](05-kernel-test-harness.md) 的不变量 `架构 I1`–`I6` 与注入点 `注入 I1`–`I10`、[06](06-index-recovery.md) 的不变量 `A1`–`A10` 是互不重叠的命名空间。
+
+用 `HRM` 前缀而不是继续用 `I*`，有两个原因：
+
+1. **仓库里 `I` 已经被三套东西占用了**：[04 §6.3](04-kernel-interfaces.md) 的 `I1`–`I5` 是 `IoExecutor` 契约；[05 §5.4](05-kernel-test-harness.md) 的 `架构 I1`–`I6` 是存储引擎不变量；`注入 I1`–`I10` 是故障注入点。第三套是 [05 §5.4](05-kernel-test-harness.md) 才引入的。
+2. **`HRM` 在 [02-kernel §3.1](02-kernel.md) 里已经是「Hardware Resource Manager」的缩写**（该章的资源管理器层次里 `HRM` 与 `PM` / `MG` 并列）。本文沿用同一个前缀，含义是「硬件资源管理」这一层的可测试契约，与 02-kernel 的 `HRM` 组件**指向同一个模块**——不是新造的名词。
 
 | 编号 | 不变量 | 可测试形式 |
 |---|---|---|
 | **HRM1** | 代价模型只在**可行集**上排序；§2.4 的八条硬约束**不可被代价越过** | 构造一个「除 DRAM 外全部不可行」的场景，断言结果不是 DRAM |
 | **HRM2** | 权重无量纲：先归一化到 `[0,1]` 再加权，且 `α+β+γ+δ = 1` | 改变 `L` 的单位（ns → µs）后，排序结果不变 |
 | **HRM3** | 放置决策确定性：不读时钟、不用随机源、平局按 `ResourceId` 升序 | 同输入连续两次求值 + 重启后再求值，三者结果相同 |
-| **HRM4** | 放置结果写进 WAL 的映射记录；**恢复期从不重新推导** | 改权重后重启，断言已落盘对象的 `PhysicalLocation` 不变 |
+| **HRM4** | 放置结果写进 WAL 的映射记录；**恢复期从不重新推导** | 改权重后重启，断言已落盘对象的物理位置（由 WAL 的 `device_id` + `device_offset` 解析）不变 |
 | **HRM5** | 缓冲绑定分层：内存命中的读放在 home node（N1），设备取数的读放在设备节点（N2），写放在发起方节点（N3）；热点对象固定 home node | 检查缓冲区页的 NUMA 归属 == 规则要求的节点（三条各一例） |
 | **HRM6** | 设备操作投递给**设备所在** NUMA 节点的 reactor | 断言提交到的是设备节点的 reactor，而非调用方节点的 |
-| **HRM7** | 生效 QD = min(设备上限, 域预算)；预算中为 flush 预留 ≥1 槽；队列满超 deadline 时返回 `Retryable(Backpressure)`，不静默截断 | QD 打满时提交部分 op，断言返回 `Retryable(Backpressure)` 且无 op 被静默丢弃 |
+| **HRM7** | 生效 QD = min(设备上限, 域预算)；普通 I/O 的在途上限 = 域预算里的**普通份额**（不含 flush 预留）；预算中为 flush 预留 ≥1 槽；队列满超 deadline 时返回 `Retryable(Backpressure)`，不静默截断 | QD 打满时提交部分 op，断言返回 `Retryable(Backpressure)` 且无 op 被静默丢弃 |
 | **HRM8** | 后端选择是启动期决策；运行期只允许能力降级；三个后端对三档 `dur` 的可观测行为一致 | 三个后端 × 三档 `dur` 的掉电对拍（[05](05-kernel-test-harness.md)） |
 
 ---
@@ -717,13 +817,15 @@ O_DIRECT **不是后端选择**，是**每个文件的选择**。io_uring / SPDK
 | `placement_role_separation` | 对象同时在 DRAM 与 NVMe 上 | DRAM 上是 `Cache`，`Authoritative` 仍在 NVMe；两者角色可从元数据区分 |
 | `placement_degraded_device_excluded` | 设备降级到 `max_durability() == Write` | 该设备退出「要求 `Durable` 的放置」候选集，但仍可承接 `Cache` / `WorkingSet` |
 | `placement_replay_stable` | 改权重后重启 | 已落盘对象的物理位置逐字节不变 |
+| `placement_first_write_has_no_transfer_cost` | 新对象首次放置（`cur = None`） | `T̃ ≡ 0`；改 `β` 不改变首次放置的排序 |
+| `cost_point_cheaper_than_scan` | 多 extent 对象 | `c_point < c_scan`，且两者进入 06 的 A / B 比较后能区分策略 |
 | `placement_no_clock_dependency` | 假时钟推进 | 放置结果不变 |
-| `numa_buffer_first_touch` | N1 / N2 / N3 三条规则各一例 | 缓冲区的页归属节点 == 规则要求的节点 |
+| `numa_buffer_placement_rules` | N1 / N2 / N3 三条规则各一例 | 缓冲区的页归属节点 == 规则要求的节点 |
 | `numa_home_node_fixed` | 某节点上的 worker 持续访问某对象 | 该对象的 home node 固定到该节点；重启后 home node 不变（由 WAL 决定） |
 | `numa_reactor_routing` | 在非设备节点发起 I/O | op 出现在设备节点的 reactor 上 |
 | `numa_fallback_observable` | 设备所在节点没有 reactor | 提交成功，且 `numa.fallback` 指标 +1 |
 | `qd_respects_device_limit` | 假设备上报一个很小的队列深度上限 | 生效 QD ≤ 上报值 |
-| `qd_flush_slot_reserved` | QD 被普通读写打满 | flush 仍能在 deadline 内完成 |
+| `qd_flush_slot_reserved` | 普通读写打满 `qd_usable` | flush 仍能在 deadline 内完成（预留槽位未被普通 I/O 占用） |
 | `qd_backpressure_returns_retryable` | 队列满且等待超 deadline | 返回 `Retryable(Backpressure)`；断言无 op 被静默丢弃 |
 | `qd_no_adjust_when_device_not_saturated` | `lat_p99 > SLO` 且 `util < 0.6` | QD 不变 |
 | `backend_selection_shared_host` | 共享部署 | 断言未选 SPDK |
@@ -744,12 +846,17 @@ O_DIRECT **不是后端选择**，是**每个文件的选择**。io_uring / SPDK
 | **B4** | O_DIRECT vs buffered | 同一写入负载 | 写放大、吞吐、尾延迟；验证 §5.4 的分类（日志开、小文件关） |
 | **B5** | 后端对比 | io_uring vs SPDK（专用部署） | 冷读 P50/P99、吞吐；为 §5.2 判据 3 的门槛提供依据 |
 | **B6** | flush 槽位影响 | 相同负载，flush 预留槽位 = 1 / 4 / 16 | 事务提交延迟 P99。验证 §4.6：预留过小会让提交延迟随 QD 恶化 |
+| **B7** | 点查与扫描成本 | 同一对象：① 按索引命中项取回**一个逻辑 extent**；② 顺序读完该对象的**全部 extent** | 两者的 P50 / P99——**设备取数**与**缓存命中**各一组。产出 `c_point` / `c_scan` 的实测值（[06 §3.2](06-index-recovery.md) 说的「设备与缓存的实测值」就是这两组） |
 
-**B3 与 B6 是本文最关键的两个 benchmark**：B3 校准初始 QD，B6 校准 flush 预留槽位。其余 benchmark 验证收益而非定参。
+**B3 与 B6 是本文最关键的两个 benchmark**：B3 校准初始 QD，B6 校准 flush 预留槽位。B7 是 `c_point` / `c_scan` 的**唯一来源**（见 §7.3）。其余 benchmark 验证收益而非定参。
 
 ### 7.3 与 06 的联测
 
-`c_scan` / `c_point` 的取值必须来自 B1 / B3 / B4 的实测，且在 [06](06-index-recovery.md) 的回退策略选择中生效——**同一个数既要用于放置决策，又要用于查询规划**，因此两处必须引用同一个来源，不能各写一份。
+`c_scan` / `c_point` 的取值必须来自 **B7** 的实测，且在 [06](06-index-recovery.md) 的回退策略选择中生效。
+
+**B1 / B3 / B4 都不产出这两个数。** B1 测的是放置决策自身的开销，B3 测 QD 与延迟的关系，B4 测 O_DIRECT 与 buffered 的差异——它们是 `c_point` / `c_scan` 的**输入**（QD 决定单次操作的延迟，O_DIRECT 决定 payload 的读取代价），但不是这两个数的来源。把来源指到它们身上，等于让实现者从「放置决策有多快」推出「扫一个对象要多久」。
+
+**同一份实测，两个派生视图。** §2.7 已定：`c_point` / `c_scan` 不是新参数，而是 `L` / `T` 的组合。放置路径（§2.1）直接用 `L` / `T`，06 的规划器用 `c_point` / `c_scan`——两处引用**同一个来源**（B7 产出、写进 Hardware Profile 的独立小节），不允许任何一方就地重新测一遍。
 
 ---
 
@@ -757,7 +864,7 @@ O_DIRECT **不是后端选择**，是**每个文件的选择**。io_uring / SPDK
 
 | 文档 | 关系 |
 |---|---|
-| [02-kernel §3.4–3.6](02-kernel.md) | 本文把代价模型从符号形式落到可计算；`MemoryAllocationRequest` 的 `numa_node` / `device_id` / `alignment` 参数在此获得用法 |
+| [02-kernel §3.4–3.6](02-kernel.md) | 本文把代价模型从符号形式落到可计算；`MemoryAllocationRequest` 的 `numa_node` / `device_id` / `alignment` / `access_pattern` 参数在此获得用法 |
 | [02-kernel §3.7](02-kernel.md) | `ResidencyRole` 是 §2.4 的硬约束来源 |
 | [02-kernel §3.8](02-kernel.md) | 迁移协议在 [03 §7](03-consistency-kernel.md)；本文只提供 `M` 的计算与「迁移不是重算」的原则 |
 | [03 §7](03-consistency-kernel.md) | 迁移的提交点与崩溃矩阵；本文的 `M` 是迁移的**决策依据**，不是执行协议 |
@@ -777,7 +884,8 @@ O_DIRECT **不是后端选择**，是**每个文件的选择**。io_uring / SPDK
 ## 九、下一步
 
 1. **决策已归档**：本文的决策记在 [ADR-0010](../adr/0010-hardware-resource-management.md)（放置代价模型的参数化方式、NUMA 亲和的缓冲分层与投递规则、QD 上限与 flush 槽位、后端选择为启动期决策、三后端耐久语义一致）。本文的 `HRM1`–`HRM8` 是这些决策的可测试形式。
-2. **`AccessPattern` / `ResourceStats` / `FaultDomainId` 入冻结清单**：前两个类型在 [02-kernel](02-kernel.md) 与 [04 §6.2](04-kernel-interfaces.md) 被引用但从未定义，第三个是本文新引入的。本文 §2.3 给了建议定义，但它们进入 04 的冻结清单需要单独一条 ADR（变更方式见 [04 §14.3](04-kernel-interfaces.md)）。
+2. **四个待定义类型入冻结清单**：`AccessPattern`（在 [02-kernel](02-kernel.md) 被引用）、`ResourceStats`（在 [04 §6.2](04-kernel-interfaces.md) 被引用）、`DeviceHealth`（在 [04 §6.1](04-kernel-interfaces.md) 被用作 `health()` 的返回类型、在 [05 §3.5](05-kernel-test-harness.md) 被当作已冻结类型引用）——三者**都被引用、从未定义**；`FaultDomainId` 是本文新引入的。本文 §2.3 给了建议定义，但它们进入 04 的冻结清单需要单独一条 ADR（变更方式见 [04 §14.3](04-kernel-interfaces.md)）。
+   **`FaultDomainId` 有一个硬依赖**：§2.4 的「故障域」硬约束在它定义并接入 `ResourceStats` 之前**无法执行**——它是一条已声明但尚不可兑现的约束。
 3. **设备级注入点的形状**：[05 §11 第 1 项](05-kernel-test-harness.md) 尚未定——site 标签放在 `DeviceOp` 上还是 `submit_and_wait` 的参数上。§4.5 的「不允许静默截断」与 §7.1 的 `qd_backpressure_returns_retryable` 都需要设备级 site 才能定位。
-4. **假设备的设备差异**：§4.2 的 `qd_device(r)` 需要假设备能上报不同的队列深度上限与对齐要求，[05 §2.3](05-kernel-test-harness.md) 的降级模型是否够用需要复核。
-5. **实机校准**：§7.2 的 B1 / B3 / B6 必须在真实硬件上跑一次，第一版的初始值（QD 32、batch 16、flush 槽位 1）只是保守起点，不是结论。
+4. **假设备的设备差异**：§4.2 的 `qd_device(r)` 需要假设备能上报不同的队列深度上限与对齐要求，[05 §2.3](05-kernel-test-harness.md) 的降级模型是否够用需要复核。（域预算 `qd_usable` / `qd_flush_reserve` 是引擎侧配置，夹具不必提供，但注入用例要能设置它——§7.1 的 `qd_flush_slot_reserved` 就需要。）
+5. **实机校准**：§7.2 的 B1 / B3 / B6 / B7 必须在真实硬件上跑一次，第一版的初始值（QD 32；batch 初值 读 16 / 写 4 / 后台 32；flush 槽位 1）只是保守起点，不是结论。B7 的结果同时是 06 的 `c_point` / `c_scan` 的唯一来源，不能省。

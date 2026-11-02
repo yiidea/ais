@@ -185,7 +185,7 @@ engine.intent({
 - Phase 1 内核接口（Object / Extent / Mapping / WAL / Transaction / Checkpoint / Reclaimer / Migration）→ [04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md)、[ADR-0008](docs/adr/0008-kernel-interface-freeze.md)
 - 故障注入夹具与不变量可执行化方案 → [05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md)、[ADR-0009](docs/adr/0009-fault-injection-harness.md)
 - 索引恢复的增量算法与回退代价模型 → [06-index-recovery.md](docs/chatgpt/06-index-recovery.md)（尚有几条待补的 ADR：`ChangeFeed` 入冻结清单、索引层写内核 WAL、两本日志的可见性对齐、索引段回收判定）
-- 硬件资源管理的实现细节 → [07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md)、[ADR-0010](docs/adr/0010-hardware-resource-management.md)（代价模型参数化、NUMA 亲和、队列深度与后端判据；尚有 `AccessPattern` / `ResourceStats` / `FaultDomainId` 入冻结清单、设备级注入点形状两条待补 ADR）
+- 硬件资源管理的实现细节 → [07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md)、[ADR-0010](docs/adr/0010-hardware-resource-management.md)（代价模型参数化、NUMA 亲和、队列深度与后端判据；尚有 `AccessPattern` / `ResourceStats` / `DeviceHealth` / `FaultDomainId` 入冻结清单、设备级注入点形状两条待补 ADR）
 
 建议的下一步：
 
