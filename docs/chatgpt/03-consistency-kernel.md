@@ -604,6 +604,6 @@ I10. 迁移 M3 中途（目标 extent 部分写入）
 
 1. **函数调用链与模块接口冻结**：Object Manager / Extent Manager / Mapping Manager / WAL Manager / GC 之间的精确 Rust trait 与错误类型。 → 已完成，见 [04-kernel-interfaces.md](04-kernel-interfaces.md)。
 2. **索引恢复的增量算法**：日志水位 → 索引构建水位的追赶策略，以及“滞后索引的查询回退路径”的代价估计。 → 已完成，见 [06-index-recovery.md](06-index-recovery.md)。
-3. **硬件资源管理的实现细节**：Placement Manager 的代价模型参数化、NUMA 亲和调度、io_uring 队列深度与 O_DIRECT / SPDK 的切换判据。
+3. **硬件资源管理的实现细节**：Placement Manager 的代价模型参数化、NUMA 亲和调度、io_uring 队列深度与 O_DIRECT / SPDK 的切换判据。 → 已完成，见 [07-hardware-resource-management.md](07-hardware-resource-management.md)、[ADR-0010](../adr/0010-hardware-resource-management.md)。
 
 这三项完成后，实现阶段就不再需要“边写边想”。

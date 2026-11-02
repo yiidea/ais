@@ -70,6 +70,8 @@ io_uring    SPDK/AIO   POSIX fallback   Remote/Object
 - **注册缓冲区**：启动时一次性分配并注册（`IORING_REGISTER_BUFFERS`），避免每次读的内核地址映射。
 - **`SQPOLL` 模式**：减少系统调用；但在虚拟化/低 CPU 配额环境自动退避。
 - **批量 IO**：一次提交多条读，利用 SSD 内部并行度；引擎根据 IO 队列深度动态调节 batch size。
+
+  队列深度与批大小的**硬边界与调整规则**（生效 QD = min(设备上限, 域预算)、flush 槽位预留、背压返回 `Retryable(Backpressure)`）见 [07-hardware-resource-management.md §4](../chatgpt/07-hardware-resource-management.md)。
 - **直接 IO（O_DIRECT）**：日志与索引段文件绕开 page cache，避免双重缓存。
 
 ### 2.3 写路径
@@ -165,3 +167,5 @@ io_uring    SPDK/AIO   POSIX fallback   Remote/Object
 | 本地 NVMe | 直连 | 本地 NVMe 走 POSIX / 远程 |
 
 **原则**：回退时行为一致，仅性能降级；所有功能都必须能在纯软环境里验证。
+
+本表的**判据**（什么情况下选哪条路径、共享部署为什么禁用 SPDK、三个后端如何保证三档耐久语义一致）不在本章，而在 [07-hardware-resource-management.md §5](../chatgpt/07-hardware-resource-management.md) 与 [ADR-0010](../adr/0010-hardware-resource-management.md)。本章给的是能力清单与回退关系，07 给的是选择规则与运行期边界。

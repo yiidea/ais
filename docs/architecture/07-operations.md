@@ -40,6 +40,8 @@
 - `max_tokens` 预算保护上下文；`max_candidates` 保护 CPU；`max_latency` 保护 SLO。
 - 超预算时：降级返回（较少候选，标注「结果被截断」）。
 
+资源域的容量、占用、预留、NUMA 归属与健康状态来自 `MemoryTierManager::stats(resource)`；该快照的类型定义见 [07-hardware-resource-management.md §2.3](../chatgpt/07-hardware-resource-management.md)。放置侧如何用这些量做决策见同文 §2.4。
+
 ## 4. 安全与合规
 
 - **加密**：传输 TLS 1.3；静态加密 AES-256-GCM（密钥管理器托管）。

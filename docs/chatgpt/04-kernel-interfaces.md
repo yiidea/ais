@@ -605,6 +605,8 @@ pub trait IoExecutor: Send + Sync {
 
 **I5：`IoExecutor` 持有 `Box<dyn StorageDevice>`。** 这是 D0.1 选用 `async_trait` 的直接原因：多种异构后端必须在运行时可替换。`DeviceOp` 因此是**枚举**而不是泛型——后端的差异由 `PhysicalLocation` 的变体承载，不在操作类型上分叉。
 
+**I1.1：I1 的「该 NUMA 节点」指设备所在的节点。** 投递给哪个 reactor、I/O 缓冲区放在哪个节点、以及队列深度与 flush 槽位的硬边界，属于 [04 §1.3](#13-明确不冻结的内容) 明确不冻结的性能参数，因此不进入本文的冻结清单；它们的推导方式与硬边界见 [07-hardware-resource-management.md](07-hardware-resource-management.md) 与 [ADR-0010](../adr/0010-hardware-resource-management.md)。这里只消歧义，不冻结数值。
+
 ## 七、WAL Manager
 
 ```rust

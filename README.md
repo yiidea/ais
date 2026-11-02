@@ -78,6 +78,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/chatgpt/04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md) | **内核接口冻结**：Rust trait 形状、统一错误模型与可重试性、模块调用方向与依赖禁令、五层锁顺序、公共 API 表面约束、接口变更流程 |
 | [docs/chatgpt/05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md) | **内核测试夹具与故障注入**：假设备掉电模型、语义注入点目录、假时钟与确定性调度、一致性检查器、不变量常驻断言、CI 接线 |
 | [docs/chatgpt/06-index-recovery.md](docs/chatgpt/06-index-recovery.md) | **索引恢复的增量算法**：LSN / xid 双水位、追赶三阶段与「先段后水位」发布顺序、幂等键与内容哈希、回退扫描路径与代价模型、索引段回收判定 |
+| [docs/chatgpt/07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md) | **硬件资源管理的实现细节**：代价模型参数化与硬约束、NUMA 亲和三规则、io_uring 队列深度与 flush 槽位预留、O_DIRECT / SPDK / POSIX 的后端切换判据 |
 
 ### 补充架构文档（本仓库新增，供实现落地）
 
@@ -92,7 +93,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/architecture/07-operations.md](docs/architecture/07-operations.md) | 可观测性、容量规划、资源治理、部署形态、运维手册、内核错误映射、测试策略与测试债务清单、Roadmap |
 | [docs/architecture/08-api-and-sdk.md](docs/architecture/08-api-and-sdk.md) | gRPC 契约、错误模型、SDK 设计原则与示例 |
 | [docs/architecture/09-threat-model.md](docs/architecture/09-threat-model.md) | STRIDE 威胁模型、提示注入专项、审计与取证 |
-| [docs/adr/](docs/adr/) | 9 篇架构决策记录（ADR） |
+| [docs/adr/](docs/adr/) | 10 篇架构决策记录（ADR） |
 
 ## 5. 概念速览
 
@@ -184,6 +185,7 @@ engine.intent({
 - Phase 1 内核接口（Object / Extent / Mapping / WAL / Transaction / Checkpoint / Reclaimer / Migration）→ [04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md)、[ADR-0008](docs/adr/0008-kernel-interface-freeze.md)
 - 故障注入夹具与不变量可执行化方案 → [05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md)、[ADR-0009](docs/adr/0009-fault-injection-harness.md)
 - 索引恢复的增量算法与回退代价模型 → [06-index-recovery.md](docs/chatgpt/06-index-recovery.md)（尚有几条待补的 ADR：`ChangeFeed` 入冻结清单、索引层写内核 WAL、两本日志的可见性对齐、索引段回收判定）
+- 硬件资源管理的实现细节 → [07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md)、[ADR-0010](docs/adr/0010-hardware-resource-management.md)（代价模型参数化、NUMA 亲和、队列深度与后端判据；尚有 `AccessPattern` / `ResourceStats` / `FaultDomainId` 入冻结清单、设备级注入点形状两条待补 ADR）
 
 建议的下一步：
 

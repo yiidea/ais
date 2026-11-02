@@ -587,4 +587,4 @@ pub enum IndexCoverage {
 3. **两本日志的可见性模型对齐**（§1.4）：SemLog 的 epoch 可见性与内核的 xid 可见性目前没有映射关系，需要确定以哪一套为准，以及索引追赶的权威输入是哪一本。
 4. **索引段回收的判定条件**（§5.3 指出它不能复用对象的六条件）。需要逐条目的快照可见性判定 + 基线段保护。做法上要么在索引层实现一个独立的段回收器，要么把它作为 `Reclaimer` 的一个受限子职责——后者会改动 [04 §10](04-kernel-interfaces.md) 的冻结契约，需要一条 ADR。
 
-另有 [03 §12 第 3 项](03-consistency-kernel.md)（硬件资源管理的实现细节）会直接影响本文的代价模型：`c_scan` 与 `c_point` 的取值来自硬件实测，代价模型参数化必须与硬件 Profile 打通。
+另有 [03 §12 第 3 项](03-consistency-kernel.md)（硬件资源管理的实现细节）会直接影响本文的代价模型：`c_scan` 与 `c_point` 的取值来自硬件实测，代价模型参数化必须与硬件 Profile 打通。 → 已完成，见 [07-hardware-resource-management.md](07-hardware-resource-management.md)；该文 §2.7 给出这两个量的定义（它们不是新参数，而是该文 `L` / `T` 的组合，以微秒为单位），§7.3 要求两处引用同一份实测来源。

@@ -2299,11 +2299,12 @@ CPU / DRAM / GPU / HBM / NVMe / CXL
 | — 内核接口 | [04-kernel-interfaces](04-kernel-interfaces.md) | 已冻结（[ADR-0008](../adr/0008-kernel-interface-freeze.md)） |
 | — 测试与故障注入 | [05-kernel-test-harness](05-kernel-test-harness.md) | 已设计（[ADR-0009](../adr/0009-fault-injection-harness.md)） |
 | — 索引恢复增量算法 | [06-index-recovery](06-index-recovery.md) | 已完成（追赶三阶段、xid 水位、发布顺序、回退代价模型） |
+| — 硬件资源管理实现细节 | [07-hardware-resource-management](07-hardware-resource-management.md) | 已完成（代价模型参数化、NUMA 亲和、队列深度与后端判据，[ADR-0010](../adr/0010-hardware-resource-management.md)） |
 | 4 Intent IR / Task DAG 接口 | [architecture/03](../architecture/03-query-engine.md) | 已展开，仍需按内核接口冻结后的形状复核 |
-| 5 Hardware-Aware Storage Manager | [architecture/04](../architecture/04-hardware-path.md) | 已展开，代价模型与队列深度判据仍待参数化 |
+| 5 Hardware-Aware Storage Manager | [architecture/04](../architecture/04-hardware-path.md) | 已展开，代价模型与队列深度判据已由 [07](07-hardware-resource-management.md) 补齐 |
 
 ### 21.2 接下来的三件事
 
 1. **夹具先行，然后写模块。** 先实现假设备、注入器与一致性检查器，再按 [04 §15](04-kernel-interfaces.md) 的依赖顺序实现内核模块——顺序错了，测试就只能在真机上跑。
-2. **补齐一项尚未深挖的设计**：硬件资源管理的实现细节（Placement 代价模型参数化、NUMA 亲和调度、io_uring 队列深度与 O_DIRECT / SPDK 的切换判据）。索引恢复的增量算法已在 [06-index-recovery](06-index-recovery.md) 完成，代价模型中的 `c_scan` / `c_point` 取值要与硬件 Profile 打通。
-3. **复核第 4、5 项与内核契约的一致性。** 索引网格与查询执行器此前是独立展开的，现在内核接口已冻结，它们的边界需要按新契约重画一遍。
+2. **复核第 4、5 项与内核契约的一致性。** 索引网格与查询执行器此前是独立展开的，现在内核接口已冻结，它们的边界需要按新契约重画一遍。
+3. **补两条待定的 ADR。** 一条把 `AccessPattern` / `ResourceStats` / `FaultDomainId` 纳入 [04](04-kernel-interfaces.md) 的冻结清单（前两个类型被引用但从未定义，[07 §2.3](07-hardware-resource-management.md) 给了建议定义）；另一条定设备级注入点在 `IoExecutor` 上的形状（[05 §11 第 1 项](05-kernel-test-harness.md)）。
