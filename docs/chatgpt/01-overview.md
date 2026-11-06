@@ -2307,4 +2307,4 @@ CPU / DRAM / GPU / HBM / NVMe / CXL
 
 1. **夹具先行，然后写模块。** 先实现假设备、注入器与一致性检查器，再按 [04 §15](04-kernel-interfaces.md) 的依赖顺序实现内核模块——顺序错了，测试就只能在真机上跑。
 2. **复核第 4、5 项与内核契约的一致性。** 索引网格与查询执行器此前是独立展开的，现在内核接口已冻结，它们的边界需要按新契约重画一遍。
-3. **补两条待定的 ADR。** 一条把 `AccessPattern` / `ResourceStats` / `DeviceHealth` / `FaultDomainId` 纳入 [04](04-kernel-interfaces.md) 的冻结清单（前三者被引用但从未定义，第四个是 [07](07-hardware-resource-management.md) 新引入的，[07 §2.3](07-hardware-resource-management.md) 给了建议定义）；另一条定设备级注入点在 `IoExecutor` 上的形状（[05 §11 第 1 项](05-kernel-test-harness.md)）。
+3. **补两条待定的 ADR（已完成）。** 把 `AccessPattern` / `ResourceStats` / `DeviceHealth` / `FaultDomainId` 纳入 [04](04-kernel-interfaces.md) 冻结清单 → [ADR-0016](../adr/0016-resource-types-freeze.md)（F18–F21）；定设备级注入点在 `IoExecutor` 上的形状 → [ADR-0011](../adr/0011-device-op-site-tagging.md)。索引恢复的四条前置 ADR 亦已补齐（[ADR-0012](../adr/0012-changefeed-freeze.md)–[ADR-0015](../adr/0015-index-segment-reclamation.md)）。

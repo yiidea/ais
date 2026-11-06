@@ -43,11 +43,11 @@
 
 因此：
 
-- **本文不向 [04 §1.2](04-kernel-interfaces.md) 的冻结清单（F1–F15）添加条目。** QD、batch 大小、亲和的具体取值都留在 §1.3 的「不冻结」侧。§3.3 在 [04 §6.3](04-kernel-interfaces.md) 补的 I1.1 是一条**消歧义**——把既有条款 I1 里「该 NUMA 节点」指实为「设备所在的节点」——它没有新增任何约束，不是冻结清单条目。
+- **本文正文的规则不改变 [04 §1.2](04-kernel-interfaces.md) 的冻结清单。** QD、batch 大小、亲和的具体取值都留在 §1.3 的「不冻结」侧。§3.3 在 [04 §6.3](04-kernel-interfaces.md) 补的 I1.1 是一条**消歧义**——把既有条款 I1 里「该 NUMA 节点」指实为「设备所在的节点」——它没有新增任何约束，不是冻结清单条目。
 - 但「这些参数**依赖什么**、**受什么硬边界约束**、**越界时返回什么**」是设计问题，本文给出答案，并由 [ADR-0010](../adr/0010-hardware-resource-management.md) 记录——**记录的是推导方式，不是具体数值**。
 - **本文不改变任何已冻结 trait 的签名。** [04 §6.2](04-kernel-interfaces.md) 的 `MemoryTierManager::allocate` 的入参 `MemoryAllocationRequest`（[02-kernel §3.6](02-kernel.md)）已经带 `numa_node` / `device_id` / `alignment` / `access_pattern` 字段，[04 §6.3](04-kernel-interfaces.md) 的 `IoExecutor` 已经提供 `submit_batch_and_wait`。本文的所有规则都落在这两个 trait 的**实现内部**。
-- 一处例外需要显式记下：`AccessPattern` 与 `ResourceStats` **各自**在被引用但**从未定义**——`AccessPattern` 出现在 [02-kernel](02-kernel.md)（§3.4 的 `PlacementRequest`、§3.6 的 `MemoryAllocationRequest`），`ResourceStats` 出现在 [04 §6.2](04-kernel-interfaces.md)（`MemoryTierManager::stats` 的返回类型）。本文要用到它们，在 §2.3 给出**建议定义**，但它们进入 04 冻结清单需要单独一条 ADR（见 §9）。
-- `DeviceHealth` 同属这一类，但更隐蔽：它在 [04 §6.1](04-kernel-interfaces.md) 作为 `health()` 的返回类型出现、在 [05 §3.5](05-kernel-test-harness.md) 被当作「已在 04 冻结」的类型引用，而仓库里**没有任何地方定义它的取值**（`Degraded` / `Failed` 只在 [04 §6.1 D3](04-kernel-interfaces.md) 的散文里出现过）。本文 §2.3 的 `ResourceStats` 要用它，一并列入待冻结清单。
+- 一处例外需要显式记下：`AccessPattern` 与 `ResourceStats` **各自**在被引用但**从未定义**——`AccessPattern` 出现在 [02-kernel](02-kernel.md)（§3.4 的 `PlacementRequest`、§3.6 的 `MemoryAllocationRequest`），`ResourceStats` 出现在 [04 §6.2](04-kernel-interfaces.md)（`MemoryTierManager::stats` 的返回类型）。本文要用到它们，在 §2.3 给出**建议定义**；两者已由 [ADR-0016](../adr/0016-resource-types-freeze.md) 冻结为 F19（`ResourceStats`）与 F20（`AccessPattern`）。
+- `DeviceHealth` 同属这一类，但更隐蔽：它在 [04 §6.1](04-kernel-interfaces.md) 作为 `health()` 的返回类型出现、在 [05 §3.5](05-kernel-test-harness.md) 被当作「已在 04 冻结」的类型引用，而仓库里**没有任何地方定义它的取值**（`Degraded` / `Failed` 只在 [04 §6.1 D3](04-kernel-interfaces.md) 的散文里出现过）。本文 §2.3 的 `ResourceStats` 要用它，已由 [ADR-0016](../adr/0016-resource-types-freeze.md) 冻结为 F18，取值集合同时补齐。
 
 ---
 
@@ -203,9 +203,9 @@ C̃(r,o,t) = α·L̃ + β·T̃ + γ·P̃ + δ·M̃ ,   α + β + γ + δ = 1
 
 **「只影响新放置」这一列是本文最重要的设计结论**，理由见 §2.6。
 
-#### 两个待定义类型
+#### 两个被引用但未定义的类型
 
-[02-kernel](02-kernel.md) 引用了 `AccessPattern`（§3.4 的 `PlacementRequest`、§3.6 的 `MemoryAllocationRequest`）与 `ResourceStats`（[04 §6.2](04-kernel-interfaces.md) 的 `MemoryTierManager::stats`），两者**都从未定义**。本文给出建议定义：
+[02-kernel](02-kernel.md) 引用了 `AccessPattern`（§3.4 的 `PlacementRequest`、§3.6 的 `MemoryAllocationRequest`）与 `ResourceStats`（[04 §6.2](04-kernel-interfaces.md) 的 `MemoryTierManager::stats`），两者在被本文引用时**都从未定义**。下面给出定义（现已被 [ADR-0016](../adr/0016-resource-types-freeze.md) 采纳为 F19 / F20）：
 
 ```rust
 /// 访问模式：描述「谁在什么时候会读这份数据」
@@ -265,7 +265,7 @@ pub struct ResourceStats {
 | `numa_node` | `numa_node` | 一致（都是 `Option<u32>`） |
 | — | `device_id` | 02-kernel 用它标出资源背后的设备；本文的 `ResourceStats` 以 `ResourceId` 标识资源、设备归属由资源注册表维护，故不重复存 |
 
-`FaultDomainId` 是本文新引入的类型。[02-kernel §3.9](02-kernel.md) 讨论了「冗余持久化副本」与「单块 NVMe 物理损坏后无法恢复数据」的风险，但没有给这个概念命名。它标识「哪些设备共享同一个失效点」——同一 PCIe switch 后的多块 NVMe、同一机架、同一供电域。它与 `AccessPattern` / `ResourceStats` / `DeviceHealth` 一并列入待冻结清单（见 §9）。
+`FaultDomainId` 是本文新引入的类型。[02-kernel §3.9](02-kernel.md) 讨论了「冗余持久化副本」与「单块 NVMe 物理损坏后无法恢复数据」的风险，但没有给这个概念命名。它标识「哪些设备共享同一个失效点」——同一 PCIe switch 后的多块 NVMe、同一机架、同一供电域。它与 `AccessPattern` / `ResourceStats` / `DeviceHealth` 一并由 [ADR-0016](../adr/0016-resource-types-freeze.md) 冻结，编号 F21。
 
 ### 2.4 硬约束先过滤，代价模型只排序
 
@@ -884,8 +884,15 @@ O_DIRECT **不是后端选择**，是**每个文件的选择**。io_uring / SPDK
 ## 九、下一步
 
 1. **决策已归档**：本文的决策记在 [ADR-0010](../adr/0010-hardware-resource-management.md)（放置代价模型的参数化方式、NUMA 亲和的缓冲分层与投递规则、QD 上限与 flush 槽位、后端选择为启动期决策、三后端耐久语义一致）。本文的 `HRM1`–`HRM8` 是这些决策的可测试形式。
-2. **四个待定义类型入冻结清单**：`AccessPattern`（在 [02-kernel](02-kernel.md) 被引用）、`ResourceStats`（在 [04 §6.2](04-kernel-interfaces.md) 被引用）、`DeviceHealth`（在 [04 §6.1](04-kernel-interfaces.md) 被用作 `health()` 的返回类型、在 [05 §3.5](05-kernel-test-harness.md) 被当作已冻结类型引用）——三者**都被引用、从未定义**；`FaultDomainId` 是本文新引入的。本文 §2.3 给了建议定义，但它们进入 04 的冻结清单需要单独一条 ADR（变更方式见 [04 §14.3](04-kernel-interfaces.md)）。
-   **`FaultDomainId` 有一个硬依赖**：§2.4 的「故障域」硬约束在它定义并接入 `ResourceStats` 之前**无法执行**——它是一条已声明但尚不可兑现的约束。
-3. **设备级注入点的形状**：[05 §11 第 1 项](05-kernel-test-harness.md) 尚未定——site 标签放在 `DeviceOp` 上还是 `submit_and_wait` 的参数上。§4.5 的「不允许静默截断」与 §7.1 的 `qd_backpressure_returns_retryable` 都需要设备级 site 才能定位。
+2. **四个待定义类型入冻结清单** → 已完成，见 [ADR-0016](../adr/0016-resource-types-freeze.md)。`AccessPattern`（F20）、`ResourceStats`（F19）、`DeviceHealth`（F18）、`FaultDomainId`（F21）全部进入 [04 §1.2](04-kernel-interfaces.md) 的冻结清单。该 ADR 同时做了三处收紧：
+
+   - `DeviceHealth` 的 `Degraded` 从「带 reason 字符串」改为**带 `DegradedCapability` 枚举**（`DurabilityReduced` / `QueueDepthReduced` / `DiscardUnavailable` / `WriteCacheDisabled`）——字符串让「降级后还能不能承接 `Cache` 角色」不可判定，这正是 §5.6 联动规则要读的信息；
+   - `ResourceStats` **不存** `available`（导出即可）、**不带**时间戳（放置决策禁止读时钟，§2.5）；容量字段以 `used` 为准（本文 §2.3 的映射表仍是 02-kernel `allocated` 的对照说明）；
+   - `FaultDomainId` 的默认值语义定死为「未声明 = 全部同域」，而非「未知 = 各不相同」。
+
+   **§2.4 的故障域硬约束因此解锁**：`ResourceStats.fault_domain` 有值之后，「同一故障域内的两份不构成冗余」可以被放置器实际执行，不再是「已声明但尚不可兑现的约束」。
+3. **设备级注入点的形状** → 已完成，见 [ADR-0011](../adr/0011-device-op-site-tagging.md)。决定：site 标签放在 **`DeviceOp` 上**（新增 `DeviceSite` 枚举），不放在 `submit_and_wait` 的参数上——批量接口因此不需要平行的标签数组，长度不一致不可表达；`submit_batch_and_wait` 的签名不变，每个 op 自带 site。
+
+   对本文的一处**修正**：§9 原判断「§4.5 的『不允许静默截断』与 §7.1 的 `qd_backpressure_returns_retryable` 都需要设备级 site」只对后者成立。背压发生在 `IoExecutor` 的提交入口、此时 op 还没出队，它是**内核级** site；需要设备级 site 的是「逐 op 观测到没有任何 op 被静默丢弃」这一断言（每个 op 带 site 后可以逐个核对）。
 4. **假设备的设备差异**：§4.2 的 `qd_device(r)` 需要假设备能上报不同的队列深度上限与对齐要求，[05 §2.3](05-kernel-test-harness.md) 的降级模型是否够用需要复核。（域预算 `qd_usable` / `qd_flush_reserve` 是引擎侧配置，夹具不必提供，但注入用例要能设置它——§7.1 的 `qd_flush_slot_reserved` 就需要。）
 5. **实机校准**：§7.2 的 B1 / B3 / B6 / B7 必须在真实硬件上跑一次，第一版的初始值（QD 32；batch 初值 读 16 / 写 4 / 后台 32；flush 槽位 1）只是保守起点，不是结论。B7 的结果同时是 06 的 `c_point` / `c_scan` 的唯一来源，不能省。

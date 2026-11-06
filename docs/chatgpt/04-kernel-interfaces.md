@@ -37,6 +37,14 @@
 | F13 | 模块调用方向 | 全局 | 允许的依赖边、禁止的反向依赖、锁顺序 | ADR |
 | F14 | 公共 API 表面 | 全局 | 公共类型只能暴露逻辑标识符，禁止暴露物理地址 | ADR |
 | F15 | `Clock` | 全局 | 内核读取时间的唯一入口：生产实现读真实时钟，测试实现读假时钟；内核代码不得直接调用 `Instant::now` / `SystemTime::now` | ADR |
+| F16 | `ChangeFeed` | 内核 → 索引层（只读） | 对象变更流的三个只读入口、可见性口径、游标单调性与分页语义（[ADR-0012](../adr/0012-changefeed-freeze.md)） | ADR |
+| F17 | `LiveSnapshotSource` | 内核 → 索引层（只读） | 存活快照集合与逐条目可见性判定的唯一实现（[ADR-0015](../adr/0015-index-segment-reclamation.md)） | ADR |
+| F18 | `DeviceHealth` | 硬件层 | 值集与判定语义（`Healthy` / `Degraded(DegradedCapability)` / `Failed`），与 `max_durability()` 的一致性（[ADR-0016](../adr/0016-resource-types-freeze.md)） | ADR |
+| F19 | `ResourceStats` | 资源层 | 字段集合与语义（容量三字段、资源类型、NUMA 归属、健康、故障域）（[ADR-0016](../adr/0016-resource-types-freeze.md)） | ADR |
+| F20 | `AccessPattern` | 资源层 | 取值闭集，以及「不影响放置、只影响 I/O 路径」的边界（[ADR-0016](../adr/0016-resource-types-freeze.md)） | ADR |
+| F21 | `FaultDomainId` | 资源层 | 标识符语义：哪些设备共享同一个失效点（[ADR-0016](../adr/0016-resource-types-freeze.md)） | ADR |
+
+**F1 的标识符清单补充 `IndexId`**（[ADR-0012](../adr/0012-changefeed-freeze.md)）：语义与 `ObjectId` 同构（16 字节、全局稳定、永不复用），由**域协调区**分配而非内核分配；内核只在 `0x30` / `0x31` 记录里承载它。补进 F1 **不**意味着索引管理器进入内核——索引仍不在本文的冻结范围与实现顺序表内（[06 §1.2](06-index-recovery.md) 的结论不变）。
 
 ### 1.3 明确不冻结的内容
 
@@ -575,12 +583,24 @@ pub trait MemoryTierManager: Send + Sync {
 设备 HAL 是 async 的，核心内核是同步的，桥接这两者的只有一个组件：
 
 ```rust
-/// 提交给 reactor 的设备操作单位
+/// 设备级语义 site：注入点的主键（ADR-0011）。穷尽 match，新增变体必须登记。
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum DeviceSite {
+    WalFrameWrite, WalFlushStart, ExtentPayloadWrite,
+    CkptManifestWrite, CkptSuperblockWrite, CkptShadowRename,
+    MappingSwitchWrite, MigrationTargetWrite, TxnCommitWrite,
+    IndexSegmentSealed, IndexWatermarkCommit,
+    /// 未打标签：内核代码里出现即为缺陷，注入规则定义在它上面必须让测试失败。
+    Untagged,
+}
+
+/// 提交给 reactor 的设备操作单位（site 字段由 ADR-0011 补充）
 pub enum DeviceOp {
-    Write   { loc: PhysicalLocation, data: Vec<u8> },
-    Read    { loc: PhysicalLocation, len: u64 },
-    Flush   { loc: PhysicalLocation, level: DurabilityLevel },
-    Discard { loc: PhysicalLocation },
+    Write   { site: DeviceSite, loc: PhysicalLocation, data: Vec<u8> },
+    Read    { site: DeviceSite, loc: PhysicalLocation, len: u64 },
+    Flush   { site: DeviceSite, loc: PhysicalLocation, level: DurabilityLevel },
+    Discard { site: DeviceSite, loc: PhysicalLocation },
 }
 
 /// 设备操作的结果（读取结果通过调用方提供的缓冲区回填）
@@ -605,6 +625,13 @@ pub trait IoExecutor: Send + Sync {
 
 **I5：`IoExecutor` 持有 `Box<dyn StorageDevice>`。** 这是 D0.1 选用 `async_trait` 的直接原因：多种异构后端必须在运行时可替换。`DeviceOp` 因此是**枚举**而不是泛型——后端的差异由 `PhysicalLocation` 的变体承载，不在操作类型上分叉。
 
+**I6：设备级 site 标签挂在 `DeviceOp` 上，不挂在 `submit_and_wait` 的参数上（[ADR-0011](../adr/0011-device-op-site-tagging.md)）。**
+
+- 标签是**调用方声明的语义**，不是 `IoExecutor` 从地址推断的。禁止按 `PhysicalLocation` 的区间反推 site——布局一改，注入点就漂移而测试仍然通过。
+- `submit_batch_and_wait` 的签名不变，批量里每个 op 自带 `site`；不传平行的标签数组（长度一致性不可用类型表达）。
+- 触发点固定在「设备操作出队并执行之前」（`before`）与该操作确认成功、尚未回填完成事件之前（`after`），两点都在 `IoExecutor` 内。
+- `DeviceSite::Untagged` 不是合法 site：内核代码产生未打标签的设备操作即为缺陷，测试必须失败而不是静默跳过。
+
 **I1.1：I1 的「该 NUMA 节点」指设备所在的节点。** 投递给哪个 reactor、I/O 缓冲区放在哪个节点、以及队列深度与 flush 槽位的硬边界，属于 [04 §1.3](#13-明确不冻结的内容) 明确不冻结的性能参数，因此不进入本文的冻结清单；它们的推导方式与硬边界见 [07-hardware-resource-management.md](07-hardware-resource-management.md) 与 [ADR-0010](../adr/0010-hardware-resource-management.md)。这里只消歧义，不冻结数值。
 
 ## 七、WAL Manager
@@ -613,6 +640,10 @@ pub trait IoExecutor: Send + Sync {
 pub trait WalManager: Send + Sync {
     /// 追加一条记录，返回其 LSN（不保证已持久）
     fn append(&self, rec: &WalRecord) -> KernelResult<Lsn>;
+
+    /// 非事务派生记录追加（ADR-0013）：xid = 0，不进任何事务的前驱链。
+    /// 记录族与记录类型必须匹配，否则返回 InvalidArgument 且不写入。
+    fn append_derived(&self, rec: &WalRecord, family: DerivedFamily) -> KernelResult<Lsn>;
 
     /// 刷盘到目标 LSN，返回时保证 target_lsn 及之前的记录已持久
     fn flush_upto(&self, target: Lsn) -> KernelResult<()>;
@@ -633,6 +664,26 @@ pub trait WalManager: Send + Sync {
 **W2：`scan_from` 遇到损坏必须停止而不是跳过。** 跳过会让恢复静默丢失记录；停止则尾部损坏被正确识别为「崩溃点」，这是正常情况而不是错误。
 
 **W3：WAL 只含元数据与校验和，不含 payload。** 大 payload 不进 WAL（[02-kernel §5.3](02-kernel.md)）。记录类型的全集见 [03 §2.3](03-consistency-kernel.md)：Transaction / Object / Extent / Mapping / **Index** / **Maintenance** 六类——其中 Index 与 Maintenance（`IndexDelta`、`IndexManifest`、`MigrationBegin/End`、`CompactionBegin/End`、`CheckpointBegin`）同样必须落 WAL，否则恢复流程（[03 §6.1](03-consistency-kernel.md)）会缺少必要记录。
+
+**W4：非事务派生记录走 `append_derived`，并按记录族鉴权（[ADR-0013](../adr/0013-index-manifest-in-wal.md)）。**
+
+```rust
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DerivedFamily {
+    /// 0x30 IndexDelta / 0x31 IndexManifest
+    Index,
+    /// 0x40–0x43 中不含提交语义的 Begin/End
+    Maintenance,
+    /// 保留：任何模块都不得使用，出现即返回 InvalidArgument
+    None,
+}
+```
+
+- **族与类型必须匹配**：`append_derived` 收到 `0x01`–`0x03` 或 `0x10`–`0x23` 一律返回 `InvalidArgument` 不写入。这些族的事务性语义（幂等键、redo 规则、可见性）都由「属于某个事务」推出，非事务写入会绕过 [03 §6.2](03-consistency-kernel.md)。
+- **不解析记录体**：WAL 不解析 `IndexManifest` 的内容（与 §12.2「`WalManager` 不回调对象层」同一条原则）。
+- **不参与 redo**：`0x31` 是派生事实，恢复时只与协调区做只读交叉核对，不做重放。
+- **截断补第四条件 T4**：非事务记录**不**影响 `min_required_lsn`（定义不变），只阻止所在 WAL 段的**物理删除**，直至其声明的段已在各索引协调区发布（[03 §5.3](03-consistency-kernel.md) T4）。
 
 ## 八、Transaction Manager
 
@@ -785,7 +836,16 @@ flowchart TB
     BG --> OM
     BG --> EM
     BG --> MM
+    IDX["索引构建器 / 索引段回收器（内核之外）"] --> CF["ChangeFeed"]
+    IDX -->|"append_derived (ADR-0013)"| WM
+    IDX --> LSS["LiveSnapshotSource"]
+    CF --> WM
+    CF --> TX
+    CF -.->|"payload 回填"| OM
+    LSS --> TX
 ```
+
+**索引层是内核之外的调用方**（[06 §1.2](06-index-recovery.md) 的结论：索引不属于内核）。它与内核之间只有三条边：经 `ChangeFeed` 读变更流、经 `WalManager::append_derived` 写派生记录、经 `LiveSnapshotSource` 读存活快照与可见性。**三条边都是单向的**，内核没有任何路径回调索引层。
 
 箭头 = **调用方向**（上层调下层）。[02-kernel §9.3](02-kernel.md) 的图画的是另一种东西——**组件包含关系**（Object Manager 之下挂着 Version / Extent / Transaction / WAL Manager），两者不矛盾：组件归属不等于调用方向。本文冻结的是调用方向，因此 `TxnCtx` 由上向下传递（`stage_version(txn, …)`），而不是让 Object Manager 反向持有事务管理器。
 
@@ -799,6 +859,11 @@ flowchart TB
 | `MappingManager` → `PlacementManager` | 映射不决定放置 | 放置结果以参数传入 |
 | 任意模块 → 任意模块的内部结构体 | 破坏封装 | 只经 trait 交互 |
 | 跨模块直接访问内存映射表 | 绕过映射版本，破坏 INV3 | 经 `MappingManager` |
+| `ChangeFeed` → `StorageDevice` / `IoExecutor` | 复制段管理、CRC 终止与 `min_required_lsn` 边界两份逻辑，必然分叉 | 经 `WalManager::scan_from`（[ADR-0012](../adr/0012-changefeed-freeze.md)） |
+| 任意模块 → `ChangeFeed` / `LiveSnapshotSource` | 它们是**向上**供给索引层的只读出口，被内核模块调用就形成环 | 只有内核之外的上层可以调用它们 |
+| 索引层 → 除 `ChangeFeed` / `LiveSnapshotSource` / `WalManager::append_derived` 之外的任何内核入口 | 索引都是派生数据，不应获得对象/映射/设备的写能力 | 只走那三条边（§12.1 图） |
+| 索引层 → 自行实现快照可见性判定 | 与 `TransactionManager::visible` 分叉后，索引会静默少召回或删除复活 | 一律调用 `LiveSnapshotSource::visible`（[ADR-0015](../adr/0015-index-segment-reclamation.md)） |
+| 索引层把 `epoch` 当作提交判定 | epoch 表达「因果范围」，不表达「是否已提交」 | 提交判定只由 xid + `TxnStatus`（[ADR-0014](../adr/0014-semlog-epoch-vs-xid-visibility.md)） |
 
 ### 12.3 锁顺序
 
@@ -860,7 +925,9 @@ pub trait ObjectManager: private::Sealed + Send + Sync { /* ... */ }
 
 1. **对外 API 表面不得出现物理类型。** `PhysicalLocation`、`PhysicalExtentId` 只允许出现在 crate 内部的 trait（`StorageDevice`、`MappingManager`、`PhysicalExtentManager`、`IoExecutor`）里，这些 trait 不对 SDK 与上层导出；**对外暴露的 trait 全部只接受逻辑标识符**。可以用 `cargo public-api` 快照 + lint 规则守住。
 2. **错误枚举用 `#[non_exhaustive]`。** 新增变体不算破坏性变更。
-3. **内核 trait 用 `private::Sealed` 封闭，`StorageDevice` 是唯一例外。** 封闭的是内核 trait（`ObjectManager` / `VersionManager` / `MappingManager` / `PhysicalExtentManager` / `IoExecutor` / `TransactionManager` / `WalManager` / `CheckpointManager` / `RecoveryManager` / `Reclaimer` / `MigrationManager` / `MemoryTierManager` / `Clock`），外部无法实现，避免「半实现的 ObjectManager」破坏不变量；`StorageDevice` 必须允许外部实现后端（见 D0.2）。
+3. **内核 trait 用 `private::Sealed` 封闭，`StorageDevice` 是唯一例外。** 封闭的是内核 trait（`ObjectManager` / `VersionManager` / `MappingManager` / `PhysicalExtentManager` / `IoExecutor` / `TransactionManager` / `WalManager` / `ChangeFeed` / `LiveSnapshotSource` / `CheckpointManager` / `RecoveryManager` / `Reclaimer` / `MigrationManager` / `MemoryTierManager` / `Clock`），外部无法实现，避免「半实现的 ObjectManager」破坏不变量；`StorageDevice` 必须允许外部实现后端（见 D0.2）。
+
+   `ChangeFeed` 与 `LiveSnapshotSource` 按 [ADR-0012](../adr/0012-changefeed-freeze.md) / [ADR-0015](../adr/0015-index-segment-reclamation.md) 纳入封闭列表：它们输出的是参与正确性判定的数据（提交判定、快照可见性），外部实现只要在「哪些 xid 算终态」上偏差一点，索引就会出现不会报错的幽灵条目或永久缺块。它们**对外部可调用**，但**不可被外部实现**——这两件事不同。
 4. **关键 trait 中标记 `#[doc(hidden)]` 的内部方法不进入对外文档与 API 快照。**
 
 ### 14.2 CI 检查

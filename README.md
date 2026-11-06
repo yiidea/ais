@@ -93,7 +93,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/architecture/07-operations.md](docs/architecture/07-operations.md) | 可观测性、容量规划、资源治理、部署形态、运维手册、内核错误映射、测试策略与测试债务清单、Roadmap |
 | [docs/architecture/08-api-and-sdk.md](docs/architecture/08-api-and-sdk.md) | gRPC 契约、错误模型、SDK 设计原则与示例 |
 | [docs/architecture/09-threat-model.md](docs/architecture/09-threat-model.md) | STRIDE 威胁模型、提示注入专项、审计与取证 |
-| [docs/adr/](docs/adr/) | 10 篇架构决策记录（ADR） |
+| [docs/adr/](docs/adr/) | 16 篇架构决策记录（ADR），含内核接口冻结（0008）、故障注入夹具（0009）、硬件资源管理（0010）及设备级注入点、`ChangeFeed` 冻结、索引层写 WAL、SemLog 可见性对齐、索引段回收、资源类型冻结（0011–0016） |
 
 ## 5. 概念速览
 
@@ -178,14 +178,33 @@ engine.intent({
 
 ## 7. 当前状态与下一步
 
-当前仓库处于 **设计阶段**，文档即为可落地的架构蓝图。
+仓库现有两部分：**设计文档**（可落地的架构蓝图）与 **Rust MVP 内核**（`src/`，零外部依赖）。
+
+Rust MVP 已实现并全部测试通过：
+
+- `src/types`、`src/error`、`src/checksum`、`src/clock`：冻结的类型、四分类 `KernelError`、CRC32C、可注入时钟；
+- `src/hal`：`StorageDevice`（async 风格 + `BoxFuture`）与同步门面 `IoExecutor`，含 `MemDevice` / `FileDevice`；
+- `src/wal`：固定段 WAL（4KB 段头、36 字节帧头、18 种记录、增量 CRC 扫描、崩溃尾部语义）；
+- `src/kernel`：Object / Extent / Mapping / Transaction / Checkpoint / Recovery / Reclaimer，快照隔离 MVCC、提交顺序（payload → data barrier → WAL → commit → publish）；
+- `src/engine`：Document 载荷、暴力向量检索、Intent 管线；
+- `src/testing`（feature `test-harness`）：故障注入设备与确定性注入器，验证崩溃恢复契约。
+
+验证方式：`cargo test`（21 项）、`cargo test --features test-harness`（+5 项崩溃恢复）、`cargo run --bin ains-demo`。
 
 已完成的设计冻结：
 
 - Phase 1 内核接口（Object / Extent / Mapping / WAL / Transaction / Checkpoint / Reclaimer / Migration）→ [04-kernel-interfaces.md](docs/chatgpt/04-kernel-interfaces.md)、[ADR-0008](docs/adr/0008-kernel-interface-freeze.md)
 - 故障注入夹具与不变量可执行化方案 → [05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md)、[ADR-0009](docs/adr/0009-fault-injection-harness.md)
-- 索引恢复的增量算法与回退代价模型 → [06-index-recovery.md](docs/chatgpt/06-index-recovery.md)（尚有几条待补的 ADR：`ChangeFeed` 入冻结清单、索引层写内核 WAL、两本日志的可见性对齐、索引段回收判定）
-- 硬件资源管理的实现细节 → [07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md)、[ADR-0010](docs/adr/0010-hardware-resource-management.md)（代价模型参数化、NUMA 亲和、队列深度与后端判据；尚有 `AccessPattern` / `ResourceStats` / `DeviceHealth` / `FaultDomainId` 入冻结清单、设备级注入点形状两条待补 ADR）
+- 索引恢复的增量算法与回退代价模型 → [06-index-recovery.md](docs/chatgpt/06-index-recovery.md)，配套四条 ADR 已补齐：
+  - [ADR-0012](docs/adr/0012-changefeed-freeze.md)（`ChangeFeed` 入冻结清单 F16 + `IndexId` 补进 F1 + 游标分页）
+  - [ADR-0013](docs/adr/0013-index-manifest-in-wal.md)（索引层写内核 WAL 的窄口 + 非事务记录截断条件 T4）
+  - [ADR-0014](docs/adr/0014-semlog-epoch-vs-xid-visibility.md)（SemLog 的 epoch 与内核 xid 的可见性对齐）
+  - [ADR-0015](docs/adr/0015-index-segment-reclamation.md)（索引段回收判定 G1–G6 与归属）
+- 硬件资源管理的实现细节 → [07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md)、[ADR-0010](docs/adr/0010-hardware-resource-management.md)（代价模型参数化、NUMA 亲和、队列深度与后端判据）；配套两条 ADR 已补齐：
+  - [ADR-0011](docs/adr/0011-device-op-site-tagging.md)（设备级注入点：site 标签放在 `DeviceOp` 上）
+  - [ADR-0016](docs/adr/0016-resource-types-freeze.md)（`DeviceHealth` / `ResourceStats` / `AccessPattern` / `FaultDomainId` 入冻结清单 F18–F21）
+
+冻结清单现为 **F1–F21**，完整对照见 [04 §1.2](docs/chatgpt/04-kernel-interfaces.md) 与 [ADR-0016 决策 2](docs/adr/0016-resource-types-freeze.md)。
 
 建议的下一步：
 

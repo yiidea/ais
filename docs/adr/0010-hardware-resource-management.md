@@ -78,11 +78,11 @@
 
    **不允许任何路径把 `Durable` 悄悄降级为 `Write`**——那会让 SLO 测试通过但数据在掉电时丢失。
 
-9. **不新增冻结项。** 本 ADR 记录的是推导方式与硬边界，不是数值。[04 §1.3](../chatgpt/04-kernel-interfaces.md) 已把「批量大小、队列深度、阈值」「NUMA 亲和如何设置」列为明确不冻结的内容，因此本文不向 [04 §1.2](../chatgpt/04-kernel-interfaces.md) 的冻结清单（F1–F15）添加条目。[04 §6.3](../chatgpt/04-kernel-interfaces.md) 的 I1.1 是一条**消歧义**，不是冻结清单条目。
+9. **不新增冻结项。** 本 ADR 记录的是推导方式与硬边界，不是数值。[04 §1.3](../chatgpt/04-kernel-interfaces.md) 已把「批量大小、队列深度、阈值」「NUMA 亲和如何设置」列为明确不冻结的内容，因此本文不向 [04 §1.2](../chatgpt/04-kernel-interfaces.md) 的冻结清单添加条目。[04 §6.3](../chatgpt/04-kernel-interfaces.md) 的 I1.1 是一条**消歧义**，不是冻结清单条目。
 
    本文所有规则都落在 `MemoryTierManager::allocate` 的入参 `MemoryAllocationRequest`（已有 `numa_node` / `device_id` / `alignment` / `access_pattern` 字段）与 `IoExecutor`（已有 `submit_batch_and_wait`）的**实现内部**，不改变任何 trait 签名。
 
-   一项待办：四个类型被引用但从未定义、或刚刚引入——`AccessPattern`（[02-kernel.md](../chatgpt/02-kernel.md)）、`ResourceStats`（[04 §6.2](../chatgpt/04-kernel-interfaces.md)）、`DeviceHealth`（[04 §6.1](../chatgpt/04-kernel-interfaces.md) 的 `health()` 返回类型，被 [05 §3.5](../chatgpt/05-kernel-test-harness.md) 当作已冻结类型引用）、`FaultDomainId`（[07 §2.3](../chatgpt/07-hardware-resource-management.md) 新引入）。[07 §2.3](../chatgpt/07-hardware-resource-management.md) 给了建议定义，但它们进入冻结清单需要单独一条 ADR。
+      一项当时的待办——四个类型被引用但从未定义、或刚刚引入：`AccessPattern`（[02-kernel.md](../chatgpt/02-kernel.md)）、`ResourceStats`（[04 §6.2](../chatgpt/04-kernel-interfaces.md)）、`DeviceHealth`（[04 §6.1](../chatgpt/04-kernel-interfaces.md) 的 `health()` 返回类型，被 [05 §3.5](../chatgpt/05-kernel-test-harness.md) 当作已冻结类型引用）、`FaultDomainId`（[07 §2.3](../chatgpt/07-hardware-resource-management.md) 新引入）。**已由 [ADR-0016](0016-resource-types-freeze.md) 关闭**：四者冻为 F18–F21。
 
 ## 备选方案
 
@@ -136,4 +136,4 @@
 - QD 与 flush 槽位的初值（B3 / B6 实测后调整）先取保守值，允许域配置覆盖；batch 初值按路径给（读 16 / 写 4 / 后台 32），同样由 B3 实测校准。
 - N2 的跨节点读代价由 B2 实测；若显著，后续版本把「消费线程临时绑到设备节点」排进计划（它属于执行层能力，不属于本文冻结范围）。
 - `c_point` / `c_scan` 由 B7 实测产出（[07 §7.2](../chatgpt/07-hardware-resource-management.md)）；[06](../chatgpt/06-index-recovery.md) 的规划器与放置路径引用同一份来源，不各自重测。
-- `AccessPattern` / `ResourceStats` / `DeviceHealth` / `FaultDomainId` 的 ADR 已在 [07 §9](../chatgpt/07-hardware-resource-management.md) 与本文决策 9 中列为显式待办，作为实现硬件路径的前置条件。
+- `AccessPattern` / `ResourceStats` / `DeviceHealth` / `FaultDomainId` 已由 [ADR-0016](0016-resource-types-freeze.md) 冻结（F18–F21），硬件路径的实现前置条件已解除。

@@ -349,9 +349,19 @@ min_required_lsn = current_checkpoint.checkpoint_lsn
 T1. 该段的全部记录 ≤ 某个已发布 checkpoint 的 checkpoint_lsn
 T2. 不存在仍在执行中的事务，其某个 WAL 记录位于该段
 T3. 不存在依赖该段的未完成迁移（MigrationRecord.source_mapping 未切换完）
+T4. 非事务派生记录已兑现：族 Index 的记录所声明的 (index_id, segment_id)
+    对当前所有已注册索引都已出现在各自域协调区的已发布段列表中；
+    族 Maintenance 的记录都有对应的 End，或被判定为未完成的维护。
 ```
 
 **T2 是必须的**：长事务可能在其开始后申请了大量 LSN，如果贸然截断它很早的记录，恢复时就无法判定该事务的起始状态。这一类 bug 在开源数据库中出过多次，必须显式处理。
+
+**T4 是** [ADR-0013](../adr/0013-index-manifest-in-wal.md) **补的**：T1–T3 全部以事务为单位，而 `IndexManifest`（`0x31`）不属于任何事务——它恰恰是「某个索引段已经发布」的证据。把它随段截掉，就等于在索引追赶慢、检查点勤的组合下剪掉了索引的发布记录。
+
+T4 的两个边界必须写清：
+
+- **T4 不改 `min_required_lsn`。** 上式 `min_required_lsn = current_checkpoint.checkpoint_lsn` 不变；T4 只影响「该 WAL 段文件何时可以被物理删除」，是空间回收的安全界，不是恢复起点。若把 T4 并进 `min_required_lsn`，截断边界就会依赖索引状态，检查点频率与索引追赶速度互相绑死。
+- **T4 是保守的。** 索引尚未消费到协调区时，相关 WAL 段**暂时**不能删（`wal_segments_blocked_by_index` 上升是运维信号）——宁可多留几个段，不可让索引无历史可读。
 
 ### 5.4 Checkpoint 的并发复杂度
 
