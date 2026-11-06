@@ -93,7 +93,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/architecture/07-operations.md](docs/architecture/07-operations.md) | 可观测性、容量规划、资源治理、部署形态、运维手册、内核错误映射、测试策略与测试债务清单、Roadmap |
 | [docs/architecture/08-api-and-sdk.md](docs/architecture/08-api-and-sdk.md) | gRPC 契约、错误模型、SDK 设计原则与示例 |
 | [docs/architecture/09-threat-model.md](docs/architecture/09-threat-model.md) | STRIDE 威胁模型、提示注入专项、审计与取证 |
-| [docs/adr/](docs/adr/) | 16 篇架构决策记录（ADR），含内核接口冻结（0008）、故障注入夹具（0009）、硬件资源管理（0010）及设备级注入点、`ChangeFeed` 冻结、索引层写 WAL、SemLog 可见性对齐、索引段回收、资源类型冻结（0011–0016） |
+| [docs/adr/](docs/adr/) | 16 篇架构决策记录（ADR），含内核接口冻结（0008）、故障注入夹具（0009）、硬件资源管理（0010）及设备级注入点、`ChangeFeed` 冻结、索引层写 WAL、SemLog 可见性对齐、索引段回收、资源类型冻结（0011–0016）。每条 ADR 都带「实现落点」一节，标明它在本仓库代码里对应哪个文件、哪些部分仍是预留 |
 
 ## 5. 概念速览
 
@@ -153,7 +153,39 @@ Physical Block（硬件访问单元：4K / 64K / GPU 传输粒度）
 
 > 不因面向 AI 就放弃 ACID：底层必须是 MVCC + WAL + Object Versioning。
 
-## 6. 快速上手（概念级）
+## 6. 快速上手
+
+零外部依赖、可直接运行（需要 Rust 1.75+）：
+
+```bash
+cargo test                       # 48 项：内核契约、变更流、派生记录、存活快照、资源类型
+cargo test --features test-harness   # +10 项掉电注入下的崩溃恢复
+cargo run --example quickstart   # 下面这段代码，可直接运行
+cargo run --bin ains-demo        # 写入 → 向量检索 → Intent 管线 → 删除 → 检查点 → 重启恢复
+```
+
+```rust
+use ains::engine::Engine;
+use ains::kernel::KernelConfig;
+use ains::hal::mem::MemDevice;
+use ains::types::{DeviceId, ObjectType};
+
+let device = Box::new(MemDevice::new(DeviceId(1), 64 << 20));
+let engine = Engine::open(KernelConfig::new("ckpt.snap"), device)?;
+
+// 一个对象 = 文档 + 向量 + 元数据，而不是建三张表
+let id = engine.put_document(
+    ObjectType::Document,
+    "WAL 检查点的原子发布",
+    vec![0.9, 0.1, 0.0],
+    Default::default(),
+)?;
+// 派生索引（向量 / 元数据）在提交之后追赶，读路径永远看到已提交状态
+for hit in engine.search(&[1.0, 0.0, 0.0], 5) { println!("{:.3} {}", hit.score, hit.text); }
+# Ok::<(), ains::KernelError>(())
+```
+
+概念级的用法（自然语言 → Intent DAG）：
 
 ```python
 # 用意图，而不是 SQL
@@ -189,7 +221,8 @@ Rust MVP 已实现并全部测试通过：
 - `src/kernel/feed`：F16 `ChangeFeed`（对象变更流 + 游标分页 + 未决事务屏障 + 截断水位显式失败），索引追赶者的唯一读入口；
 - `src/kernel/live`：F17 `LiveSnapshotSource`（存活快照集合 + 逐条目可见性，复用内核唯一的 `version_visible`），索引段回收器 G3/G4 的唯一输入；
 - `src/engine`：Document 载荷、暴力向量检索、Intent 管线；
-- `src/testing`（feature `test-harness`）：故障注入设备与确定性注入器，验证崩溃恢复契约。
+- `src/testing`（feature `test-harness`）：故障注入设备与确定性注入器，验证崩溃恢复契约；
+- `examples/quickstart`：README §6 的代码，作为编译检查长期存在。
 
 验证方式：`cargo test`（48 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
 
@@ -208,12 +241,13 @@ Rust MVP 已实现并全部测试通过：
 
 冻结清单现为 **F1–F21**，完整对照见 [04 §1.2](docs/chatgpt/04-kernel-interfaces.md) 与 [ADR-0016 决策 2](docs/adr/0016-resource-types-freeze.md)。
 
-建议的下一步：
+下一步（按依赖顺序）：
 
-1. **夹具先行**：先实现假设备 + 注入器 + 一致性检查器，再动内核模块；
-2. 用 Rust 实现 MVP：Object + Document + Vector、WAL + Checkpoint、MVCC、io_uring、HNSW + Metadata Index、Intent API；
-3. 建立三类 Benchmark：基础存储、AI 工作负载、硬件效率；
-4. 在第一版不实现：分布式事务、完整 GPU 后端、CXL、RDMA、自研模型——但预留扩展点。
+1. **索引层落地**（内核之外）：向量 / 元数据索引的段格式与协调区，消费 F16 `ChangeFeed`、用 F17 判可见性、经 `append_derived` 记录发布；补上 ADR-0015 的 G1–G6 回收器。
+2. **读路径的索引可见性水位**：`engine.search` 目前直接扫描已提交对象；接上索引后必须暴露「索引已追到哪」，滞后时按 06 §3.2 选择回退策略，而不是把旧结果当最新结果。
+3. **io_uring / SPDK 后端**：`StorageDevice` 已冻结、`FileDevice` 已是 POSIX 实现，后端切换判据见 07 §5。
+4. **组提交与写路径并发**：MVP 用一把 writer 锁串行化写；改为每对象写意向锁 + WAL 组提交（03 §2.5）。
+5. 第一版不实现：分布式事务、完整 GPU 后端、CXL、RDMA、自研模型——但接口已预留。
 
 **最终定位**：
 
