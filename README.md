@@ -79,6 +79,7 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/chatgpt/05-kernel-test-harness.md](docs/chatgpt/05-kernel-test-harness.md) | **内核测试夹具与故障注入**：假设备掉电模型、语义注入点目录、假时钟与确定性调度、一致性检查器、不变量常驻断言、CI 接线 |
 | [docs/chatgpt/06-index-recovery.md](docs/chatgpt/06-index-recovery.md) | **索引恢复的增量算法**：LSN / xid 双水位、追赶三阶段与「先段后水位」发布顺序、幂等键与内容哈希、回退扫描路径与代价模型、索引段回收判定 |
 | [docs/chatgpt/07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md) | **硬件资源管理的实现细节**：代价模型参数化与硬约束、NUMA 亲和三规则、io_uring 队列深度与 flush 槽位预留、O_DIRECT / SPDK / POSIX 的后端切换判据 |
+| [docs/chatgpt/08-index-layer.md](docs/chatgpt/08-index-layer.md) | **索引层的实现结构**（内核之外的调用方）：五个部件（CatchUp / IndexKind / SegmentBuilder / Coordinator / Reclaimer）各自读什么写什么、「先段后水位」的崩溃点表、G1–G6 在代码里的形状、覆盖判定与新鲜度、重启恢复 |
 
 ### 补充架构文档（本仓库新增，供实现落地）
 
