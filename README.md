@@ -186,10 +186,11 @@ Rust MVP 已实现并全部测试通过：
 - `src/hal`：`StorageDevice`（async 风格 + `BoxFuture`）与同步门面 `IoExecutor`，含 `MemDevice` / `FileDevice`；
 - `src/wal`：固定段 WAL（4KB 段头、36 字节帧头、18 种记录、增量 CRC 扫描、崩溃尾部语义）；
 - `src/kernel`：Object / Extent / Mapping / Transaction / Checkpoint / Recovery / Reclaimer，快照隔离 MVCC、提交顺序（payload → data barrier → WAL → commit → publish）；
+- `src/kernel/feed`：F16 `ChangeFeed`（对象变更流 + 游标分页 + 未决事务屏障 + 截断水位显式失败），索引追赶者的唯一读入口；
 - `src/engine`：Document 载荷、暴力向量检索、Intent 管线；
 - `src/testing`（feature `test-harness`）：故障注入设备与确定性注入器，验证崩溃恢复契约。
 
-验证方式：`cargo test`（21 项）、`cargo test --features test-harness`（+5 项崩溃恢复）、`cargo run --bin ains-demo`。
+验证方式：`cargo test`（38 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
 
 已完成的设计冻结：
 

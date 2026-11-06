@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub mod checkpoint;
+pub mod feed;
 pub mod gc;
 pub mod object;
 pub mod state;
@@ -28,6 +29,7 @@ pub use state::{
     ExtentEntry, ExtentState, KernelState, MappingEntry, MappingRecord, MappingState, ObjectEntry,
     PhysicalExtentEntry, VersionEntry,
 };
+pub use feed::{ChangeBatch, ChangeBatchSpec, ChangeFeed, ObjectChange, ObjectMeta};
 pub use txn::{Snapshot, TxnCtx, TxnStatusMap, WriteSet};
 
 // ---------------------------------------------------------------------------
@@ -688,10 +690,13 @@ impl TransactionManager for Kernel {
             }
         }
         // 4. ObjectDelete
-        for oid in txn.pending_deletes.clone() {
+        for (oid, ver) in txn.pending_deletes.clone() {
             self.append(
                 txn,
-                &WalBody::ObjectDelete { object_id: oid },
+                &WalBody::ObjectDelete {
+                    object_id: oid,
+                    version: ver,
+                },
             )?;
         }
         // 5. TxnCommit + wal barrier
@@ -715,7 +720,7 @@ impl TransactionManager for Kernel {
                 }
             }
         }
-        for oid in txn.pending_deletes.clone() {
+        for (oid, _) in txn.pending_deletes.clone() {
             if let Some(o) = st.objects.get_mut(&oid) {
                 o.deleted_xid = Some(txn.xid);
             }

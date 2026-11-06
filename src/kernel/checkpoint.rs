@@ -382,7 +382,7 @@ fn apply_record(
             });
             o.versions.sort_by_key(|v| v.version.0);
         }
-        WalBody::ObjectDelete { object_id } => {
+        WalBody::ObjectDelete { object_id, .. } => {
             if committed {
                 if let Some(o) = st.objects.get_mut(object_id) {
                     o.deleted_xid = Some(xid);

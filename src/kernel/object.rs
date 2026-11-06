@@ -88,16 +88,10 @@ impl ObjectManager for Kernel {
                 return Err(KernelError::not_found(IdKind::Object, id));
             }
         }
-        // 从新到旧找第一个可见的已发布版本。
-        for v in o.versions.iter().rev() {
-            if v.state != VersionState::Published {
-                continue;
-            }
-            if crate::kernel::txn::version_visible(v.xmin, v.xmax, snap, &st.txn_status) {
-                return Ok(v.version);
-            }
+        match crate::kernel::txn::latest_visible_version(o, snap, &st.txn_status) {
+            VersionId(0) => Err(KernelError::not_found(IdKind::Object, id)),
+            v => Ok(v),
         }
-        Err(KernelError::not_found(IdKind::Object, id))
     }
 
     fn read_version(&self, id: ObjectId, ver: VersionId) -> KernelResult<ObjectView> {
@@ -183,13 +177,19 @@ impl ObjectManager for Kernel {
 
     fn delete_object(&self, txn: &mut TxnCtx, id: ObjectId) -> KernelResult<()> {
         self.check_txn_running(txn)?;
-        let st = self.state.lock().unwrap();
-        if !st.objects.contains_key(&id) {
-            return Err(KernelError::not_found(IdKind::Object, id));
-        }
-        drop(st);
-        if !txn.pending_deletes.contains(&id) {
-            txn.pending_deletes.push(id);
+        let tombstone = {
+            let st = self.state.lock().unwrap();
+            let o = st
+                .objects
+                .get(&id)
+                .ok_or_else(|| KernelError::not_found(IdKind::Object, id))?;
+            if o.deleted_xid.is_some() && txn.pending_deletes.iter().all(|(d, _)| *d != id) {
+                return Err(KernelError::not_found(IdKind::Object, id));
+            }
+            crate::kernel::txn::latest_visible_version(o, &txn.snapshot, &st.txn_status)
+        };
+        if txn.pending_deletes.iter().all(|(d, _)| *d != id) {
+            txn.pending_deletes.push((id, tombstone));
         }
         Ok(())
     }

@@ -124,7 +124,7 @@ enum RecordType {
     // 0x10 Object / Version
     ObjectCreate    = 0x10,
     ObjectVersion   = 0x11,   // 生成新版本（COW 后的版本目录更新）
-    ObjectDelete    = 0x12,   // 设置 xmax，不是物理删除
+    ObjectDelete    = 0x12,   // 设置 xmax，不是物理删除；body 带被删版本
 
     // 0x20 Extent / Mapping
     ExtentAlloc     = 0x20,
@@ -158,6 +158,9 @@ struct ObjectCreateBody { object_id: [u8;16], object_type: u8, tenant_id: u64,
 struct ObjectVersionBody { object_id: [u8;16], new_version: u64,
                            old_version: u64 /* 0 = 新建 */,
                            component_root: ComponentRoot }
+
+struct ObjectDeleteBody  { object_id: [u8;16],
+                          version: u64 /* 墓碑目标的版本（06 §2.6） */ }
 
 struct ExtentAllocBody  { logical_extent: LogicalExtentId, mapping_id: u64,
                           physical_extent: PhysicalExtentId,

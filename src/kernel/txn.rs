@@ -2,7 +2,7 @@
 
 use crate::types::{
     ExtentId, IsolationLevel, Lsn, MappingId, ObjectId, SnapshotId, TransactionId, TxnStatus,
-    VersionId,
+    VersionId, VersionState,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -56,8 +56,12 @@ pub struct TxnCtx {
     pub(crate) pending_extents: Vec<ExtentId>,
     /// 本事务创建的映射。
     pub(crate) pending_mappings: Vec<(ExtentId, MappingId)>,
-    /// 本事务待删除的对象。
-    pub(crate) pending_deletes: Vec<ObjectId>,
+    /// 本事务待删除的对象，以及删除发生时可见的版本。
+    ///
+    /// 版本链是追加的：删除提交后仍可能有并发事务追加更高的版本号。因此墓碑的目标
+    /// 版本必须在删除**发生时**确定并随 WAL 记录持久，不能到提交时再取「最新版本」
+    /// （06 §2.6：墓碑标记的是 `(object_id, version)`）。
+    pub(crate) pending_deletes: Vec<(ObjectId, VersionId)>,
     /// 事务的隔离级别（MVP 固定为 `Snapshot`）。
     pub isolation: IsolationLevel,
 }
@@ -126,6 +130,39 @@ pub fn version_visible(
         None => true,
         Some(x) => !committed_in_snapshot(x, snap, status),
     }
+}
+
+/// 快照下可见的最新已发布版本（`VersionId(0)` = 没有可见版本）。
+///
+/// `resolve_version`、删除时的墓碑判定与 `ChangeFeed` 的 `scan_objects` 共用这一处
+/// 判定：可见性逻辑一旦分叉，就是 03 §1.1 R3 的「用序号近似可见性」。
+pub fn latest_visible_version(
+    entry: &crate::kernel::state::ObjectEntry,
+    snap: &Snapshot,
+    status: &TxnStatusMap,
+) -> VersionId {
+    entry
+        .versions
+        .iter()
+        .rev()
+        .filter(|v| v.state == VersionState::Published)
+        .find(|v| version_visible(v.xmin, v.xmax, snap, status))
+        .map(|v| v.version)
+        .unwrap_or(VersionId(0))
+}
+
+/// 快照下对象本身是否可见：未被删除事务隐藏，且至少有一个可见版本。
+pub fn object_visible(
+    entry: &crate::kernel::state::ObjectEntry,
+    snap: &Snapshot,
+    status: &TxnStatusMap,
+) -> bool {
+    if let Some(del) = entry.deleted_xid {
+        if committed_in_snapshot(del, snap, status) {
+            return false;
+        }
+    }
+    latest_visible_version(entry, snap, status).0 != 0
 }
 
 #[cfg(test)]

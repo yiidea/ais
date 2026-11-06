@@ -260,6 +260,13 @@ pub enum WalBody {
     },
     ObjectDelete {
         object_id: ObjectId,
+        /// 被删除的版本（墓碑的目标版本）。
+        ///
+        /// 03 §2.3 的 `ObjectDeleteBody` 原先只有 `object_id`，但 `ObjectChange::Deleted`
+        /// 需要 `version`，而索引侧墓碑的目标是 `(object_id, version)` 而不是对象——
+        /// 一个对象被删除时，哪些版本已经不可见由删除事务的快照决定。这里补上该字段
+        /// （03 §2.3 已同步），让变更流不必靠「猜最新版本」来构造墓碑。
+        version: VersionId,
     },
     ExtentAlloc {
         extent: u64,
@@ -359,8 +366,9 @@ impl WalBody {
                 w.u64(old_version.0);
                 w.u64(*extent);
             }
-            WalBody::ObjectDelete { object_id } => {
+            WalBody::ObjectDelete { object_id, version } => {
                 w.bytes16(object_id.as_bytes());
+                w.u64(version.0);
             }
             WalBody::ExtentAlloc {
                 extent,
@@ -465,6 +473,7 @@ impl WalBody {
             },
             RecordType::ObjectDelete => WalBody::ObjectDelete {
                 object_id: ObjectId::from_bytes(r.bytes16()?),
+                version: VersionId(r.u64()?),
             },
             RecordType::ExtentAlloc => WalBody::ExtentAlloc {
                 extent: r.u64()?,

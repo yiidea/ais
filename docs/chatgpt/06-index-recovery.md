@@ -92,6 +92,12 @@ pub trait ChangeFeed {
 - 调用方向与分页形态也已冻结：`ChangeFeed → WalManager`（禁止反向）；`scan_changes` 的入参带 `ChangeBatchSpec`、返回 `ChangeBatch`（有界批 + `next_cursor` + `blocked_by_pending_txn`），游标不越过未决事务屏障、空批不得前进。详见 [ADR-0012](../adr/0012-changefeed-freeze.md) 决策 2–3。
 - `IndexId` 已由 [ADR-0012](../adr/0012-changefeed-freeze.md) 决策 4 补进 [04 §1.2](04-kernel-interfaces.md) 的 F1：16 字节、由协调区分配，内核只承载标识符、不解释其内容——这不会把索引管理器拉进内核，本文 §1.2 的结论不变。
 
+**MVP 实现的三个落点**（形状冻结、细节归实现）：
+
+1. `ObjectIdIter` 在本仓库落成 `Vec<ObjectId>`：全量重建路径本来就要把所有可见对象读一遍，materialize 一个 id 列表不改变任何语义；将来要改成有界迭代器属于实现演进，不是签名变更。
+2. **一次创建只有一条 `Created`**：`ObjectCreate` 之后紧跟的首个 `ObjectVersion`（`old_version = 0`）是同一件事，内核把它折叠进 `Created.version`，不再单独报 `Versioned`。不折叠的话，每个新建对象都会在索引里先 insert 一次、再「删除不存在的旧版本 + insert」一次（§2.3 动作表）。
+3. **游标是「下一条未消费记录」的 LSN**（包含式起点），边界由 `WalManager::scan_from` 给出的记录头决定。调用方不得自行用 `lsn + 帧长` 推算——帧头 36 字节、body 按 8 字节对齐，算错一次就会落在帧内部。
+
 ### 1.3 「滞后」是连续的量，不是一个布尔值
 
 [03 §6.1 第 9 步](03-consistency-kernel.md) 写的是「索引声明水位 < object 水位 → 标记『滞后』」。这个二值标记对**正确性**够用（滞后就是滞后），但对**查询决策**不够用：
