@@ -51,6 +51,41 @@ pub enum RecordType {
     CheckpointBegin = 0x44,
 }
 
+/// 非事务派生记录族（04 §7 W4，[ADR-0013]）。
+///
+/// 只有派生数据（索引构建进度、维护标记）允许走非事务通道；对象与事务族的语义
+/// 全部建立在「属于某个事务」之上，混入非事务通道会绕过 03 §6.2 的 redo 规则。
+///
+/// [ADR-0013]: ../../docs/adr/0013-index-manifest-in-wal.md
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DerivedFamily {
+    /// `0x30` `IndexDelta` / `0x31` `IndexManifest`
+    Index,
+    /// `0x40`–`0x43` 中不含提交语义的 Begin/End
+    Maintenance,
+    /// 保留：任何模块都不得使用，出现即 `InvalidArgument`
+    None,
+}
+
+impl DerivedFamily {
+    /// 族与记录类型是否匹配（ADR-0013 决策 1）。不匹配时调用方必须得到
+    /// `InvalidArgument`，且**不写入任何字节**。
+    pub fn accepts(self, record_type: RecordType) -> bool {
+        use RecordType::*;
+        match self {
+            DerivedFamily::Index => matches!(record_type, IndexDelta | IndexManifest),
+            DerivedFamily::Maintenance => {
+                matches!(
+                    record_type,
+                    MigrationBegin | MigrationEnd | CompactionBegin | CompactionEnd
+                )
+            }
+            DerivedFamily::None => false,
+        }
+    }
+}
+
 impl RecordType {
     pub fn from_u8(v: u8) -> Option<Self> {
         Some(match v {
@@ -117,6 +152,13 @@ pub struct WalScan {
 pub trait WalManager: Send + Sync {
     /// 追加一条记录，返回其 LSN（不保证已持久）。
     fn append(&self, rec: &WalRecord) -> KernelResult<Lsn>;
+
+    /// 非事务派生记录追加（ADR-0013 决策 1）：`xid = 0`，不进入任何事务的前驱链。
+    ///
+    /// 记录族与记录类型必须匹配（[`DerivedFamily::accepts`]），`xid` 必须为 0；
+    /// 否则返回 `InvalidArgument` 且**不写入任何字节**。`WalManager` 不解析记录体
+    /// （ADR-0013 决策 2）。
+    fn append_derived(&self, rec: &WalRecord, family: DerivedFamily) -> KernelResult<Lsn>;
 
     /// 刷盘到目标 LSN，返回时保证 target_lsn 及之前的记录已持久。
     fn flush_upto(&self, target: Lsn) -> KernelResult<()>;

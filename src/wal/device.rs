@@ -5,13 +5,13 @@
 //! 而 WAL 的持久性正是崩溃恢复测试的核心。
 
 use super::{
-    align_up, decode_frame, encode_frame, WalManager, WalRecord, WalScan, ALIGN, FORMAT_VERSION,
-    RECORD_HEADER_SIZE, SEGMENT_HEADER_SIZE, WAL_MAGIC,
+    align_up, decode_frame, encode_frame, DerivedFamily, WalManager, WalRecord, WalScan, ALIGN,
+    FORMAT_VERSION, RECORD_HEADER_SIZE, SEGMENT_HEADER_SIZE, WAL_MAGIC,
 };
 use crate::checksum::Crc32c;
 use crate::error::{CorruptionKind, InternalCode, IoOp, KernelError, KernelResult, ResourceType};
 use crate::hal::{DeviceOp, DeviceSite, IoExecutor};
-use crate::types::{DeviceId, DurabilityLevel, Lsn, PhysicalLocation};
+use crate::types::{DeviceId, DurabilityLevel, Lsn, PhysicalLocation, TransactionId};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -271,8 +271,9 @@ impl DeviceWal {
     }
 }
 
-impl WalManager for DeviceWal {
-    fn append(&self, rec: &WalRecord) -> KernelResult<Lsn> {
+impl DeviceWal {
+    /// 追加的实现：`append` 与 `append_derived` 共用。
+    fn append_frame(&self, rec: &WalRecord) -> KernelResult<Lsn> {
         let mut st = self.state.lock().unwrap();
         // 帧长必须与 `encode_frame` 完全一致：头固定 36 字节，body 单独补齐到 8 字节。
         // 若这里用 align_up(头 + body)，会多算 4 字节，导致后续帧的 LSN 与扫描期望错位。
@@ -292,6 +293,34 @@ impl WalManager for DeviceWal {
         st.append_offset += frame_len;
         st.next_lsn = self.segment_start(st.current_segment) + st.append_offset;
         Ok(lsn)
+    }
+}
+
+impl WalManager for DeviceWal {
+    fn append(&self, rec: &WalRecord) -> KernelResult<Lsn> {
+        self.append_frame(rec)
+    }
+
+    fn append_derived(&self, rec: &WalRecord, family: DerivedFamily) -> KernelResult<Lsn> {
+        // 校验全部在任何写入之前完成（ADR-0013 决策 1）：不匹配的调用必须零副作用。
+        if !family.accepts(rec.record_type) {
+            return Err(KernelError::invalid(format!(
+                "{:?} family may not carry {:?} records",
+                family, rec.record_type
+            )));
+        }
+        if rec.xid != TransactionId(0) {
+            return Err(KernelError::invalid(format!(
+                "derived records are non-transactional, got xid {}",
+                rec.xid
+            )));
+        }
+        if rec.prev_lsn != Lsn(0) {
+            return Err(KernelError::invalid(
+                "derived records do not join a transaction's prev_lsn chain",
+            ));
+        }
+        self.append_frame(rec)
     }
 
     fn flush_upto(&self, target: Lsn) -> KernelResult<()> {

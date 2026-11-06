@@ -599,5 +599,3 @@ pub enum IndexCoverage {
 
 - §6.3 说的「`05` 的 L1 模块表与 `FaultSite` 枚举要加索引模块与两个索引层 site」——site 的承载机制已由 [ADR-0011](../adr/0011-device-op-site-tagging.md) 定为 `DeviceSite` 枚举，两个索引层 site 已列入其中；`05` 的模块表补索引构建器仍是夹具侧的具体工作。
 - §2.5 的幂等键与 §5.1 的「未发布的段一律作废」在 [ADR-0013](../adr/0013-index-manifest-in-wal.md) 之后多了一条可核对路径（`0x31` 与协调区交叉核对），但结论不变：协调区仍是权威。
-
-另有 [03 §12 第 3 项](03-consistency-kernel.md)（硬件资源管理的实现细节）会直接影响本文的代价模型：`c_scan` 与 `c_point` 的取值来自硬件实测，代价模型参数化必须与硬件 Profile 打通。 → 已完成，见 [07-hardware-resource-management.md](07-hardware-resource-management.md)；该文 §2.7 给出这两个量的定义（它们不是新参数，而是该文 `L` / `T` 的组合，以微秒为单位；点查只取回**一个逻辑 extent**，扫描读完全部 extent——两者的差距是本文 §3.2 的 A / B 策略可区分的前提），§7.2 的 B7 是这两个数的**唯一实测来源**（设备取数与缓存命中各一组），§7.3 要求两处引用同一份来源。

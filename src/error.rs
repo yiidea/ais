@@ -96,6 +96,10 @@ pub enum KernelError {
     Corrupted(CorruptionKind),
     ResourceExhausted { resource: ResourceType },
     Unsupported { feature: &'static str },
+    /// 调用参数自相矛盾，且**没有写入任何东西**（ADR-0013 决策 1：记录族与记录类型
+    /// 不匹配、非事务通道收到事务族记录等）。与 `Conflict`（并发导致的失败）不同，
+    /// 重试同一个调用只会得到同一个结果。
+    InvalidArgument { detail: String },
     Io { op: IoOp, source: std::io::Error },
     Internal { code: InternalCode, detail: String },
 }
@@ -123,7 +127,15 @@ impl KernelError {
         KernelError::Io { op, source }
     }
 
+    pub fn invalid(detail: impl Into<String>) -> Self {
+        KernelError::InvalidArgument {
+            detail: detail.into(),
+        }
+    }
+
     /// 04 §2.3：调用方是否可以自动重试。
+    ///
+    /// `InvalidArgument` 不在其列：参数错与并发无关，重试同一调用只会得到同一结果。
     pub fn is_retryable(&self) -> bool {
         match self {
             KernelError::Retryable(_) => true,
@@ -150,6 +162,7 @@ impl fmt::Display for KernelError {
                 write!(f, "resource exhausted: {resource:?}")
             }
             KernelError::Unsupported { feature } => write!(f, "unsupported: {feature}"),
+            KernelError::InvalidArgument { detail } => write!(f, "invalid argument: {detail}"),
             KernelError::Io { op, source } => write!(f, "io error during {op:?}: {source}"),
             KernelError::Internal { code, detail } => write!(f, "internal error {code:?}: {detail}"),
         }
