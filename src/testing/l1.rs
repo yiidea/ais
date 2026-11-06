@@ -4,7 +4,7 @@ use crate::checksum::crc32c;
 use crate::error::KernelResult;
 use crate::hal::StorageDevice;
 use crate::kernel::{CommitReceipt, Kernel, KernelConfig, ObjectManager, TransactionManager, TxnCtx};
-use crate::testing::FaultDevice;
+use crate::testing::FaultIo;
 use crate::types::*;
 use crate::wal::{DeviceWal, DeviceWalConfig};
 use std::path::PathBuf;
@@ -32,15 +32,18 @@ impl Layout {
 
 /// 用共享内存设备建一个可注入的引擎环境。
 ///
-/// 返回的 `MemDevice` 通过 `Arc` 共享：崩溃重启时复用同一份"介质"。
+/// 设备通过 `Arc` 共享：崩溃重启时复用同一份「介质」，换一个新的 [`FaultIo`]。
 pub struct Harness {
     pub kernel: Kernel,
-    pub fault: Arc<FaultDevice>,
+    pub io: Arc<FaultIo>,
 }
 
 impl Harness {
-    pub fn devices(&self) -> &FaultDevice {
-        &self.fault
+    /// 打开（或重启）内核：同一份介质、全新的注入器状态。
+    pub fn boot(cfg: KernelConfig, medium: Arc<dyn StorageDevice>) -> KernelResult<Self> {
+        let io = Arc::new(FaultIo::new(medium));
+        let kernel = Kernel::open_with_io(cfg, io.clone())?;
+        Ok(Harness { kernel, io })
     }
 }
 

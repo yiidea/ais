@@ -66,10 +66,14 @@ impl ExtentManager for Kernel {
             ));
         }
         if dur != DurabilityLevel::None {
-            self.io.submit_and_wait(crate::hal::DeviceOp::Flush {
-                loc,
-                level: dur,
-            })?;
+            self.io.submit_and_wait(
+                crate::hal::DeviceSite::ExtentPayloadWrite,
+                crate::hal::DeviceOp::Flush {
+                    site: crate::hal::DeviceSite::ExtentPayloadWrite,
+                    loc,
+                    level: dur,
+                },
+            )?;
         }
         Ok(())
     }
@@ -113,9 +117,15 @@ impl ExtentManager for Kernel {
             })
         };
         // 先注销引用（上面已完成），再归还物理空间（R3）。
+        // Discard 不参与语义注入（05 §3.2 目录无对应 site），因此不额外打标签。
         if let Some(loc) = loc {
-            self.io
-                .submit_and_wait(crate::hal::DeviceOp::Discard { loc })?;
+            self.io.submit_and_wait(
+                crate::hal::DeviceSite::Untagged,
+                crate::hal::DeviceOp::Discard {
+                    site: crate::hal::DeviceSite::Untagged,
+                    loc,
+                },
+            )?;
         }
         Ok(())
     }

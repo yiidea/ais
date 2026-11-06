@@ -4,7 +4,7 @@
 //! MVP 先实现语义等价的同步版本：提交 → 在当前线程 `block_on` 设备 future → 返回。
 //! 这保持了 I2「调用返回即已完成」的契约，后续替换为 reactor 线程池时接口不变。
 
-use super::{DeviceOp, DeviceResult, DeviceDescriptor, IoExecutor, StorageDevice};
+use super::{DeviceOp, DeviceResult, DeviceDescriptor, DeviceSite, IoExecutor, StorageDevice};
 use crate::error::{InternalCode, KernelError, KernelResult};
 use crate::types::{DurabilityLevel, PhysicalLocation};
 use std::future::Future;
@@ -56,29 +56,32 @@ impl SyncIoExecutor {
 }
 
 impl IoExecutor for SyncIoExecutor {
-    fn submit_and_wait(&self, op: DeviceOp) -> KernelResult<DeviceResult> {
+    /// 触发点（ADR-0011 决策 3）：本实现没有独立的 reactor 线程，
+    /// 「出队并执行之前」= 进入本函数；「确认成功、未回填之前」= 设备调用返回之后。
+    /// 将来的 reactor 版本把这两个点放在工作线程上，接口不变。
+    fn submit_and_wait(&self, _site: DeviceSite, op: DeviceOp) -> KernelResult<DeviceResult> {
         match op {
-            DeviceOp::Write { loc, data } => {
+            DeviceOp::Write { loc, data, .. } => {
                 block_on(self.device.write(&loc, &data))?;
                 Ok(DeviceResult)
             }
-            DeviceOp::Read { loc, len } => {
+            DeviceOp::Read { loc, len, .. } => {
                 let mut buf = vec![0u8; len as usize];
                 block_on(self.device.read(&loc, &mut buf))?;
                 Ok(DeviceResult)
             }
-            DeviceOp::Flush { loc, level } => {
+            DeviceOp::Flush { loc, level, .. } => {
                 block_on(self.device.flush(&loc, level))?;
                 Ok(DeviceResult)
             }
-            DeviceOp::Discard { loc } => {
+            DeviceOp::Discard { loc, .. } => {
                 block_on(self.device.discard(&loc))?;
                 Ok(DeviceResult)
             }
         }
     }
 
-    fn read_into(&self, loc: &PhysicalLocation, buf: &mut [u8]) -> KernelResult<()> {
+    fn read_into(&self, _site: DeviceSite, loc: &PhysicalLocation, buf: &mut [u8]) -> KernelResult<()> {
         if buf.len() as u64 != loc.length {
             return Err(KernelError::internal(
                 InternalCode::InvariantViolation,

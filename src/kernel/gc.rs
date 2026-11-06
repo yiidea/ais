@@ -140,10 +140,15 @@ impl Reclaimer for Kernel {
         let lsn = self.wal.append(&rec)?;
         self.wal.flush_upto(lsn)?;
 
-        // 再释放物理空间（R3）。
+        // 再释放物理空间（R3）。Discard 不参与语义注入，site 保持 `Untagged`。
         if let Some(loc) = loc {
-            self.io
-                .submit_and_wait(crate::hal::DeviceOp::Discard { loc })?;
+            self.io.submit_and_wait(
+                crate::hal::DeviceSite::Untagged,
+                crate::hal::DeviceOp::Discard {
+                    site: crate::hal::DeviceSite::Untagged,
+                    loc,
+                },
+            )?;
         }
         Ok(())
     }

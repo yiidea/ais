@@ -10,7 +10,7 @@ use super::{
 };
 use crate::checksum::Crc32c;
 use crate::error::{CorruptionKind, InternalCode, IoOp, KernelError, KernelResult, ResourceType};
-use crate::hal::{DeviceOp, IoExecutor};
+use crate::hal::{DeviceOp, DeviceSite, IoExecutor};
 use crate::types::{DeviceId, DurabilityLevel, Lsn, PhysicalLocation};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -93,24 +93,51 @@ impl DeviceWal {
 
     fn read_bytes(&self, offset: u64, len: usize) -> KernelResult<Vec<u8>> {
         let mut buf = vec![0u8; len];
-        self.io
-            .read_into(&self.location(offset, len as u64), &mut buf)?;
+        self.io.read_into(
+            DeviceSite::WalFrameWrite,
+            &self.location(offset, len as u64),
+            &mut buf,
+        )?;
         Ok(buf)
     }
 
+    /// WAL 区的所有 write 共用 `WalFrameWrite`：
+    /// 段头的 write 同样属于 `wal.frame.partial` 的注入点（ADR-0011 迁移说明）。
     fn write_bytes(&self, offset: u64, data: &[u8]) -> KernelResult<()> {
-        self.io.submit_and_wait(DeviceOp::Write {
-            loc: self.location(offset, data.len() as u64),
-            data: data.to_vec(),
-        })?;
+        self.io.submit_and_wait(
+            DeviceSite::WalFrameWrite,
+            DeviceOp::Write {
+                site: DeviceSite::WalFrameWrite,
+                loc: self.location(offset, data.len() as u64),
+                data: data.to_vec(),
+            },
+        )?;
+        Ok(())
+    }
+
+    /// 写一帧记录：site 由记录类型决定（`TxnCommit` 帧是 `txn.commit.before_flush`，
+    /// 其余帧是 `wal.frame.partial` / `wal.frame.written`）。
+    fn write_frame(&self, offset: u64, frame: &[u8], site: DeviceSite) -> KernelResult<()> {
+        self.io.submit_and_wait(
+            site,
+            DeviceOp::Write {
+                site,
+                loc: self.location(offset, frame.len() as u64),
+                data: frame.to_vec(),
+            },
+        )?;
         Ok(())
     }
 
     fn flush_segment(&self, seg: usize) -> KernelResult<()> {
-        self.io.submit_and_wait(DeviceOp::Flush {
-            loc: self.location(self.segment_start(seg), self.cfg.segment_size),
-            level: DurabilityLevel::Durable,
-        })?;
+        self.io.submit_and_wait(
+            DeviceSite::WalFlushStart,
+            DeviceOp::Flush {
+                site: DeviceSite::WalFlushStart,
+                loc: self.location(self.segment_start(seg), self.cfg.segment_size),
+                level: DurabilityLevel::Durable,
+            },
+        )?;
         Ok(())
     }
 
@@ -261,7 +288,7 @@ impl WalManager for DeviceWal {
         let lsn = Lsn(self.segment_start(st.current_segment) + st.append_offset);
         let frame = encode_frame(rec, lsn);
         let phys = self.segment_start(st.current_segment) + st.append_offset;
-        self.write_bytes(phys, &frame)?;
+        self.write_frame(phys, &frame, frame_site(rec.record_type))?;
         st.append_offset += frame_len;
         st.next_lsn = self.segment_start(st.current_segment) + st.append_offset;
         Ok(lsn)
@@ -355,6 +382,18 @@ impl WalManager for DeviceWal {
 
     fn set_min_required_lsn(&self, lsn: Lsn) {
         self.min_required.store(lsn.0, Ordering::SeqCst);
+    }
+}
+
+/// 记录类型 → 写入该帧时的设备级 site（05 §3.2 目录）。
+///
+/// 只有 `TxnCommit` 帧对应 `txn.commit.before_flush`；其余记录（含段头）都是
+/// `wal.frame.partial` / `wal.frame.written`。索引层记录 0x30 / 0x31 由索引层
+/// 自己的写路径打标签，但仍经过同一个 `IoExecutor`（06 §6.3）。
+fn frame_site(record_type: super::RecordType) -> DeviceSite {
+    match record_type {
+        super::RecordType::TxnCommit => DeviceSite::TxnCommitWrite,
+        _ => DeviceSite::WalFrameWrite,
     }
 }
 

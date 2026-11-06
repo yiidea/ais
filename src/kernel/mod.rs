@@ -10,7 +10,7 @@ use crate::clock::{Clock, SystemClock};
 use crate::error::{
     ConflictKind, CorruptionKind, IdKind, InternalCode, KernelError, KernelResult, ResourceType,
 };
-use crate::hal::{DeviceOp, IoExecutor, StorageDevice, SyncIoExecutor};
+use crate::hal::{DeviceOp, DeviceSite, IoExecutor, StorageDevice, SyncIoExecutor};
 use crate::types::*;
 use crate::wal::{DeviceWal, DeviceWalConfig, WalBody, WalManager};
 use std::collections::BTreeSet;
@@ -274,7 +274,18 @@ pub struct Kernel {
 
 impl Kernel {
     pub fn open(config: KernelConfig, device: Box<dyn StorageDevice>) -> KernelResult<Self> {
-        let io: Arc<dyn IoExecutor> = Arc::new(SyncIoExecutor::new(device));
+        Self::open_with_io(config, Arc::new(SyncIoExecutor::new(device)))
+    }
+
+    /// 用外部提供的 `IoExecutor` 打开内核。
+    ///
+    /// 生产路径走 [`Kernel::open`]（内部建同步 façade）；测试夹具用它挂在
+    /// 注入型执行器上（05 §5 的 L2 崩溃层）。这不是冻结合同的一部分：
+    /// 内核对外仍然只通过 `IoExecutor` 触达设备（04 §6.3 I3），换个实现不改变任何语义。
+    pub fn open_with_io(
+        config: KernelConfig,
+        io: Arc<dyn IoExecutor>,
+    ) -> KernelResult<Self> {
         let wal = Arc::new(DeviceWal::open(
             Arc::clone(&io),
             DeviceWalConfig::new(
@@ -353,7 +364,8 @@ impl Kernel {
             }
         };
         let mut buf = vec![0u8; loc.length as usize];
-        self.io.read_into(&loc, &mut buf)?;
+        self.io
+            .read_into(DeviceSite::ExtentPayloadWrite, &loc, &mut buf)?;
         Ok(buf)
     }
 
@@ -487,15 +499,23 @@ impl Kernel {
         }
         let mut padded = data.to_vec();
         padded.resize(loc.length as usize, 0);
-        self.io.submit_and_wait(DeviceOp::Write {
-            loc,
-            data: padded,
-        })?;
+        self.io.submit_and_wait(
+            DeviceSite::ExtentPayloadWrite,
+            DeviceOp::Write {
+                site: DeviceSite::ExtentPayloadWrite,
+                loc,
+                data: padded,
+            },
+        )?;
         // data barrier：提交前 payload 必须达到 Durable（E1 / T2.1）。
-        self.io.submit_and_wait(DeviceOp::Flush {
-            loc,
-            level: DurabilityLevel::Durable,
-        })?;
+        self.io.submit_and_wait(
+            DeviceSite::ExtentPayloadWrite,
+            DeviceOp::Flush {
+                site: DeviceSite::ExtentPayloadWrite,
+                loc,
+                level: DurabilityLevel::Durable,
+            },
+        )?;
         Ok(())
     }
 
