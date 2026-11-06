@@ -200,8 +200,8 @@ Rust MVP 已实现并全部测试通过：
 - 索引恢复的增量算法与回退代价模型 → [06-index-recovery.md](docs/chatgpt/06-index-recovery.md)，配套四条 ADR 已补齐：
   - [ADR-0012](docs/adr/0012-changefeed-freeze.md)（`ChangeFeed` 入冻结清单 F16 + `IndexId` 补进 F1 + 游标分页）
   - [ADR-0013](docs/adr/0013-index-manifest-in-wal.md)（索引层写内核 WAL 的窄口 + 非事务记录截断条件 T4）
-  - [ADR-0014](docs/adr/0014-semlog-epoch-vs-xid-visibility.md)（SemLog 的 epoch 与内核 xid 的可见性对齐）
-  - [ADR-0015](docs/adr/0015-index-segment-reclamation.md)（索引段回收判定 G1–G6 与归属）
+  - [ADR-0014](docs/adr/0014-semlog-epoch-vs-xid-visibility.md)（SemLog 的 epoch 与内核 xid 的可见性对齐；内核侧已满足，`PlacementEpoch` 随迁移实现落地）
+  - [ADR-0015](docs/adr/0015-index-segment-reclamation.md)（索引段回收判定 G1–G6 与归属；内核侧的 F17 `LiveSnapshotSource` 已实现）
 - 硬件资源管理的实现细节 → [07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md)、[ADR-0010](docs/adr/0010-hardware-resource-management.md)（代价模型参数化、NUMA 亲和、队列深度与后端判据）；配套两条 ADR 已补齐：
   - [ADR-0011](docs/adr/0011-device-op-site-tagging.md)（设备级注入点：site 标签放在 `DeviceOp` 上）
   - [ADR-0016](docs/adr/0016-resource-types-freeze.md)（`DeviceHealth` / `ResourceStats` / `AccessPattern` / `FaultDomainId` 入冻结清单 F18–F21）

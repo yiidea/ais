@@ -77,6 +77,16 @@
 
    版本兼容沿用 [03 §2.2](../chatgpt/03-consistency-kernel.md) 的同一套做法：记录头带 `format_version` 与 `flags`（[architecture/02 §2.2](../architecture/02-storage-engine.md) 的布局里已经有 `flags` 2 字节），`commit_xid` 是否存在由 `flags` 位标记。v1 记录没有该字段，读取时按 0 处理；v2 写入的记录在 v1 读取器眼里是「未知标志位 → 拒绝读取」而不是静默忽略——SemLog 记录自带 CRC，宁可拒绝也不猜。
 
+## 实现落点（MVP）
+
+1. **`PlacementEpoch` 在 MVP 内核里没有落成类型**。MVP 没有迁移、也没有分代内存回收（[README §7](../../README.md) 第一版不做迁移），放置代际的唯一消费者 `Reclaimer` 的第 3 条判定直接视为满足（`src/kernel/gc.rs`）。因此代码里不存在「名不副实」的 `Epoch` 类型可改——改名生效的位置在文档与将来的迁移实现里。这与决策 4「改名不是纯文档动作」不冲突：**一旦**迁移实现落地，它必须新建 `PlacementEpoch`，而不是沿用裸 `epoch` 这个名字。
+
+2. **内核侧无需改动即可满足决策 3**：索引条目携带的 `created_by_xid` / `deleted_by_xid` 已经由 F16 的 `ObjectChange` 与 F17 的 `EntryVisibility` 承载（`EntryVisibility` 只有这两个字段，见 [ADR-0015](0015-index-segment-reclamation.md) 实现落点 2），没有任何途径把一个 `sem_epoch` 混进可见性判定。
+
+3. **`sem_epoch` 与 `commit_xid` 属于 SemLog，不属于本仓库的内核 MVP**。SemLog 的格式（[architecture/02 §2.2](../architecture/02-storage-engine.md)）与 `flags` 位兼容规则就绪前，内核不引入这两个字段——决策 6 是给 SemLog 写入方的契约，不是内核 WAL 的格式变更。
+
+4. **追加速率的边界**：内核只承诺「`TxnCommit` 持久后才返回 `CommitReceipt`」（[04 §8 T2](../chatgpt/04-kernel-interfaces.md) 第 5 步）。SemLog 追加发生在 `commit` 返回之后，由执行层负责；`semlog_lag_records` 的可观测口径因此也归执行层。
+
 ## 备选方案
 
 1. **以 SemLog 为权威重放源，内核 WAL 降为「元数据缓存」** → SemLog 没有提交事实，也没有可判定的持久末尾；索引追赶会失去「哪些事务已提交」这个前提。改为内核 WAL 权威（决策 5）。
