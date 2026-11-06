@@ -170,7 +170,17 @@ struct ExtentAllocBody  { logical_extent: LogicalExtentId, mapping_id: u64,
 struct MappingSwitchBody { logical_extent: LogicalExtentId,
                            old_mapping: u64, new_mapping: u64,
                            reason: u8 /* MIGRATION / COMPACTION / REPAIR */ }
+
+// 0x30 / 0x31：索引层经 append_derived 写入（ADR-0013），xid 恒为 0
+struct IndexDeltaBody   { index_id: [u8;16], object_id: [u8;16],
+                          version: u64, op: u8 /* INSERT / DELETE / TOMBSTONE */ }
+
+struct IndexManifestBody { index_id: [u8;16], segment_id: [u8;16],
+                           from_lsn: u64, to_lsn: u64,
+                           watermark_xid: u64, watermark_lsn: u64 }
 ```
+
+`index_id` 在 0x30 / 0x31 两个 body 里都是**必填**字段：一份 WAL 上同时存在多个索引的追赶记录，缺了它，「按 `(object_id, version_id)` upsert」的去重就会跨索引互相覆盖。[06 §2.4](../chatgpt/06-index-recovery.md) 列出的段发布字段（`segment_id`、`[from_lsn, to_lsn]`、`tx_w`）全部落在 `IndexManifestBody` 里，这正是 §5.3 的 T4 用来核对的 `(index_id, segment_id)` 对。
 
 ### 2.4 Payload 不进入 WAL
 

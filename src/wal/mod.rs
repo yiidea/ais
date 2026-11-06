@@ -5,7 +5,7 @@
 
 use crate::checksum::crc32c;
 use crate::error::{CorruptionKind, KernelError, KernelResult};
-use crate::types::{Lsn, ObjectId, TransactionId, VersionId};
+use crate::types::{IndexId, Lsn, ObjectId, TransactionId, VersionId};
 
 pub mod device;
 
@@ -332,12 +332,22 @@ pub enum WalBody {
         new_mapping: u64,
         reason: u8,
     },
+    /// 索引条目变更（06 §2.3）。`index_id` 是决定幂等的必填字段：一份 WAL 上可能同时
+    /// 有多个索引的追赶记录，缺了它，「按 `(object_id, version_id)` 去重」就会跨索引
+    /// 覆盖（见 03 §2.3 的字段说明）。
     IndexDelta {
+        index_id: IndexId,
         object_id: ObjectId,
         version: VersionId,
         op: u8,
     },
+    /// 索引段发布（06 §2.4）。`segment_id` / `from_lsn` / `to_lsn` 与协调区一起构成
+    /// ADR-0013 决策 4 的 T4 核对依据；**不作为恢复期 redo 输入**（ADR-0013 决策 3）。
     IndexManifest {
+        index_id: IndexId,
+        segment_id: [u8; 16],
+        from_lsn: u64,
+        to_lsn: u64,
         watermark_xid: u64,
         watermark_lsn: u64,
     },
@@ -449,18 +459,28 @@ impl WalBody {
                 w.u8(*reason);
             }
             WalBody::IndexDelta {
+                index_id,
                 object_id,
                 version,
                 op,
             } => {
+                w.u64(index_id.0);
                 w.bytes16(object_id.as_bytes());
                 w.u64(version.0);
                 w.u8(*op);
             }
             WalBody::IndexManifest {
+                index_id,
+                segment_id,
+                from_lsn,
+                to_lsn,
                 watermark_xid,
                 watermark_lsn,
             } => {
+                w.u64(index_id.0);
+                w.bytes16(segment_id);
+                w.u64(*from_lsn);
+                w.u64(*to_lsn);
                 w.u64(*watermark_xid);
                 w.u64(*watermark_lsn);
             }
@@ -538,11 +558,16 @@ impl WalBody {
                 reason: r.u8()?,
             },
             RecordType::IndexDelta => WalBody::IndexDelta {
+                index_id: IndexId(r.u64()?),
                 object_id: ObjectId::from_bytes(r.bytes16()?),
                 version: VersionId(r.u64()?),
                 op: r.u8()?,
             },
             RecordType::IndexManifest => WalBody::IndexManifest {
+                index_id: IndexId(r.u64()?),
+                segment_id: r.bytes16()?,
+                from_lsn: r.u64()?,
+                to_lsn: r.u64()?,
                 watermark_xid: r.u64()?,
                 watermark_lsn: r.u64()?,
             },
@@ -558,6 +583,38 @@ impl WalBody {
             },
         };
         Ok(decoded)
+    }
+}
+
+impl WalBody {
+    /// 记录族（ADR-0013 决策 1）。`None` = 该记录只能走事务路径 `append`。
+    ///
+    /// 这里维护的是「记录类型 → 族」的唯一映射；`append_derived` 用它校验
+    /// 「调用方声明的族」与「记录体想去的族」一致，避免出现
+    /// `IndexDelta { .. }` 被标成 `Maintenance` 这类自相矛盾的调用。
+    pub fn family(&self) -> Option<DerivedFamily> {
+        match self.record_type() {
+            RecordType::IndexDelta | RecordType::IndexManifest => Some(DerivedFamily::Index),
+            RecordType::MigrationBegin
+            | RecordType::MigrationEnd
+            | RecordType::CompactionBegin
+            | RecordType::CompactionEnd => Some(DerivedFamily::Maintenance),
+            _ => None,
+        }
+    }
+
+    /// 经非事务通道追加。封装「编码 + `append_derived`」两步，调用方只需给出 `body`。
+    pub fn append_derived(wal: &dyn WalManager, body: &WalBody) -> KernelResult<Lsn> {
+        let family = body.family().ok_or_else(|| {
+            KernelError::invalid(format!(
+                "{:?} is a transactional record and cannot use append_derived (ADR-0013)",
+                body.record_type()
+            ))
+        })?;
+        wal.append_derived(
+            &WalRecord::new(body.record_type(), TransactionId(0), Lsn(0), body.encode()),
+            family,
+        )
     }
 }
 

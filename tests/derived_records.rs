@@ -71,6 +71,7 @@ fn family_membership_is_exact() {
 fn accepted_records_are_appended_and_scannable() {
     let k = kernel("accept");
     let delta = WalBody::IndexDelta {
+        index_id: IndexId(1),
         object_id: ObjectId::new(1, 7),
         version: VersionId(3),
         op: 1,
@@ -99,6 +100,10 @@ fn accepted_records_are_appended_and_scannable() {
     );
 
     let manifest = WalBody::IndexManifest {
+        index_id: IndexId(1),
+        segment_id: [7u8; 16],
+        from_lsn: 100,
+        to_lsn: 200,
         watermark_xid: 12,
         watermark_lsn: 34,
     };
@@ -126,6 +131,7 @@ fn accepted_records_are_appended_and_scannable() {
 fn mismatched_family_writes_nothing() {
     let k = kernel("mismatch");
     let delta = WalBody::IndexDelta {
+        index_id: IndexId(1),
         object_id: ObjectId::new(1, 7),
         version: VersionId(1),
         op: 0,
@@ -188,6 +194,7 @@ fn mismatched_family_writes_nothing() {
 fn transactional_fields_are_rejected() {
     let k = kernel("txn-fields");
     let delta = WalBody::IndexDelta {
+        index_id: IndexId(1),
         object_id: ObjectId::new(1, 7),
         version: VersionId(1),
         op: 0,
@@ -238,6 +245,7 @@ fn change_feed_ignores_derived_records() {
     TransactionManager::commit(&k, &mut txn).expect("commit");
 
     let delta = WalBody::IndexDelta {
+        index_id: IndexId(1),
         object_id: id,
         version: VersionId(1),
         op: 2,
@@ -256,4 +264,58 @@ fn change_feed_ignores_derived_records() {
     assert!(!batch.blocked_by_pending_txn);
     assert_eq!(batch.changes.len(), 1, "only the create is an object change");
     assert_eq!(batch.changes[0].object(), id);
+}
+
+#[test]
+fn body_family_mapping_is_authoritative() {
+    // 族是从记录体推出来的，不是调用方口头声明的：这样「把这个记录标成那个族」
+    // 这种自相矛盾的调用在类型层面就写不出来。
+    let delta = WalBody::IndexDelta {
+        index_id: IndexId(1),
+        object_id: ObjectId::new(1, 7),
+        version: VersionId(1),
+        op: 0,
+    };
+    assert_eq!(delta.family(), Some(DerivedFamily::Index));
+
+    let maintenance = WalBody::Maintenance {
+        kind: RecordType::CompactionEnd,
+        extent: 0,
+        old_mapping: 0,
+        new_mapping: 0,
+    };
+    assert_eq!(maintenance.family(), Some(DerivedFamily::Maintenance));
+
+    let obj = WalBody::ObjectCreate {
+        object_id: ObjectId::new(1, 9),
+        object_type: 1,
+        component_count: 1,
+    };
+    assert_eq!(obj.family(), None, "object records are transactional");
+}
+
+#[test]
+fn append_derived_helper_refuses_transactional_bodies() {
+    let k = kernel("helper");
+    let before = k.wal().scan_from(Lsn(0)).expect("scan").last_valid_lsn;
+
+    let txn_body = WalBody::TxnCommit;
+    let err = WalBody::append_derived(k.wal(), &txn_body).expect_err("must refuse");
+    assert!(matches!(err, ains::KernelError::InvalidArgument { .. }));
+
+    let delta = WalBody::IndexDelta {
+        index_id: IndexId(1),
+        object_id: ObjectId::new(1, 7),
+        version: VersionId(2),
+        op: 1,
+    };
+    let lsn = WalBody::append_derived(k.wal(), &delta).expect("derived append");
+    k.wal().flush_upto(lsn).expect("flush");
+    let scan = k.wal().scan_from(before).expect("scan");
+    let hit = scan.records.iter().find(|r| r.lsn == lsn).expect("present");
+    assert_eq!(hit.record.xid, TransactionId(0));
+    assert_eq!(
+        WalBody::decode(hit.record.record_type, &hit.record.body).unwrap(),
+        delta
+    );
 }

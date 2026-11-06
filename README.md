@@ -158,7 +158,7 @@ Physical Block（硬件访问单元：4K / 64K / GPU 传输粒度）
 零外部依赖、可直接运行（需要 Rust 1.75+）：
 
 ```bash
-cargo test                       # 48 项：内核契约、变更流、派生记录、存活快照、资源类型
+cargo test                       # 50 项：内核契约、变更流、派生记录、存活快照、资源类型
 cargo test --features test-harness   # +10 项掉电注入下的崩溃恢复
 cargo run --example quickstart   # 下面这段代码，可直接运行
 cargo run --bin ains-demo        # 写入 → 向量检索 → Intent 管线 → 删除 → 检查点 → 重启恢复
@@ -224,7 +224,7 @@ Rust MVP 已实现并全部测试通过：
 - `src/testing`（feature `test-harness`）：故障注入设备与确定性注入器，验证崩溃恢复契约；
 - `examples/quickstart`：README §6 的代码，作为编译检查长期存在。
 
-验证方式：`cargo test`（48 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
+验证方式：`cargo test`（50 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
 
 已完成的设计冻结：
 

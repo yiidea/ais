@@ -75,6 +75,10 @@ id_type!(SnapshotId, "快照标识。");
 id_type!(CheckpointId, "检查点标识。");
 id_type!(AllocationId, "内存/设备分配标识。");
 id_type!(DeviceId, "设备标识。");
+id_type!(
+    IndexId,
+    "派生索引标识（F1，04 §1.2）；由域协调区分配，内核只承载、不解释（ADR-0012 决策 4）。"
+);
 
 /// 组件标识（对象内部数据划分）。
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
