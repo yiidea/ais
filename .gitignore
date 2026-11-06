@@ -1,0 +1,13 @@
+# Rust 构建产物
+/target/
+
+# 编辑器
+.idea/
+.vscode/
+
+# 会话记忆（本地工具产物，不入库）
+.remember/
+
+# Python 缓存（文档脚本的残留）
+.ruff_cache/
+__pycache__/
