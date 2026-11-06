@@ -143,12 +143,110 @@ impl DurabilityLevel {
     }
 }
 
-/// 设备健康状态（04 §6.1 D3）。
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// 设备的健康状态（F18，[ADR-0016]）。由设备/后端被动上报，内核不主动探测。
+///
+/// [ADR-0016]: ../../docs/adr/0016-resource-types-freeze.md
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum DeviceHealth {
+    /// 全部能力可用。
     Healthy,
-    Degraded { reason: String },
-    Failed { reason: String },
+    /// 能力下降：可继续承载数据，但能力集合收缩。
+    Degraded(DegradedCapability),
+    /// 不可用：所有 I/O 返回 `Io{op}`，不再进入任何候选集（F18）。
+    Failed,
+}
+
+/// 降级时**具体**失去了什么（F18）。
+///
+/// 必须可枚举，不能只是一个字符串：放置器要据此判断设备是否仍可承接 `Cache` 角色，
+/// 而不是解析「队列深度下降」还是「写缓存关闭」这类措辞（ADR-0016 决策 3 的约束）。
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum DegradedCapability {
+    /// `max_durability()` 下降（例如 `Durable` → `Write`）。
+    DurabilityReduced,
+    /// 队列深度上限下降。
+    QueueDepthReduced,
+    /// discard 不再可用。
+    DiscardUnavailable,
+    /// 写缓存被禁用（掉电即丢，等价于只能提供 `Write`）。
+    WriteCacheDisabled,
+}
+
+impl DeviceHealth {
+    /// F18 的一致性要求：报告 `DurabilityReduced` 时 `max_durability()` 必须真的低于
+    /// `Durable`，反之亦然。矛盾状态必须被断言捕获（ADR-0016 决策 3）。
+    pub fn is_consistent_with(&self, max_durability: DurabilityLevel) -> bool {
+        match self {
+            DeviceHealth::Healthy => max_durability == DurabilityLevel::Durable,
+            DeviceHealth::Degraded(DegradedCapability::DurabilityReduced) => {
+                max_durability < DurabilityLevel::Durable
+            }
+            // 其它降级能力（队列深度、discard、写缓存）与耐久等级无关。
+            DeviceHealth::Degraded(_) => true,
+            // 不可用设备不承诺任何耐久等级；但设备能返回 Durable 却说 Failed 同样是矛盾。
+            DeviceHealth::Failed => max_durability < DurabilityLevel::Durable,
+        }
+    }
+}
+
+/// 资源域统计快照（F19，[ADR-0016]）。一次采样，不带时间戳，不含设备 ID。
+///
+/// [ADR-0016]: ../../docs/adr/0016-resource-types-freeze.md
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResourceStats {
+    /// 总容量（字节）。
+    pub capacity: u64,
+    /// 已使用（字节）；对应 02-kernel §3.2 的 `allocated`。
+    pub used: u64,
+    /// 已预留、不可被普通分配动用（字节）。
+    pub reserved: u64,
+    /// 资源类型。
+    pub resource_type: crate::error::ResourceType,
+    /// 归属 NUMA 节点；`None` = 无 NUMA 信息（容器 / VM）。
+    pub numa_node: Option<u32>,
+    /// 设备健康。
+    pub health: DeviceHealth,
+    /// 故障域；`None` = 未知。
+    pub fault_domain: Option<FaultDomainId>,
+}
+
+impl ResourceStats {
+    /// 可分配余量。**导出而非存储**：存下来就会出现「三字段互相矛盾」的状态（F19）。
+    pub fn available(&self) -> u64 {
+        self.capacity.saturating_sub(self.used).saturating_sub(self.reserved)
+    }
+}
+
+/// 访问模式（F20，[ADR-0016]）。闭集、可判定，由对象头统计或 `PlacementRequest` 显式给出。
+///
+/// 冻结的不只是取值，还有一条边界：它**不影响放置**，只影响 I/O 路径
+/// （队列选择、batch 大小，07 §4.7）。放置器不得自行推断访问模式。
+///
+/// [ADR-0016]: ../../docs/adr/0016-resource-types-freeze.md
+#[non_exhaustive]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum AccessPattern {
+    Sequential,
+    RandomPoint,
+    Hotspot,
+    WriteOnly,
+    Cold,
+}
+
+/// 故障域标识（F21，[ADR-0016]）：共享同一失效点的一组设备。
+///
+/// 同一故障域内的两个副本**不构成冗余**。域 ID 是部署配置而不是探测结果；
+/// 未声明意味着所有设备同域 `FaultDomainId(0)`——保守，不假装有冗余。
+///
+/// [ADR-0016]: ../../docs/adr/0016-resource-types-freeze.md
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+pub struct FaultDomainId(pub u32);
+
+impl FaultDomainId {
+    /// 未声明故障域时所有设备落入的域。
+    pub const UNDECLARED: FaultDomainId = FaultDomainId(0);
 }
 
 /// 隔离级别：MVP 只有快照隔离（04 §8 T5）。

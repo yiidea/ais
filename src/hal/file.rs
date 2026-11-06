@@ -143,6 +143,11 @@ impl StorageDevice for FileDevice {
     }
 
     fn health(&self) -> DeviceHealth {
-        DeviceHealth::Healthy
+        // F18：与 `max_durability()` 保持一致，不能用固定的 `Healthy` 掩盖降级。
+        if self.max_durability < DurabilityLevel::Durable {
+            DeviceHealth::Degraded(crate::types::DegradedCapability::DurabilityReduced)
+        } else {
+            DeviceHealth::Healthy
+        }
     }
 }

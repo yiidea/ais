@@ -2,7 +2,7 @@
 
 use super::{BoxFuture, DeviceDescriptor, StorageDevice};
 use crate::error::{IoOp, KernelError, KernelResult};
-use crate::types::{DeviceHealth, DurabilityLevel, PhysicalLocation};
+use crate::types::{DegradedCapability, DeviceHealth, DurabilityLevel, PhysicalLocation};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
@@ -67,6 +67,27 @@ impl MemDevice {
 
     pub fn set_max_durability(&mut self, level: DurabilityLevel) {
         self.max_durability = level;
+    }
+
+    /// 资源域统计快照（F19）。`used` 取「已写入的不同偏移数」——假设备没有分配器等
+    /// 概念，这个口径正好等价于「真正承载过数据的字节数」。
+    pub fn stats(&self) -> crate::types::ResourceStats {
+        let st = self.state.lock().unwrap();
+        let used = st
+            .media
+            .keys()
+            .chain(st.cache.keys())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len() as u64;
+        crate::types::ResourceStats {
+            capacity: self.descriptor.capacity,
+            used,
+            reserved: 0,
+            resource_type: crate::error::ResourceType::Nvme,
+            numa_node: Some(0),
+            health: StorageDevice::health(self),
+            fault_domain: Some(crate::types::FaultDomainId::UNDECLARED),
+        }
     }
 
     pub fn persistent_bytes(&self) -> usize {
@@ -190,10 +211,10 @@ impl StorageDevice for MemDevice {
     }
 
     fn health(&self) -> DeviceHealth {
-        if self.max_durability == DurabilityLevel::None {
-            DeviceHealth::Degraded {
-                reason: "durability degraded to None".to_string(),
-            }
+        // F18：降级必须与 `max_durability()` 一致。耐久降到 `Durable` 以下时报告
+        // `DurabilityReduced`，而不是用字符串解释原因（ADR-0016 决策 3）。
+        if self.max_durability < DurabilityLevel::Durable {
+            DeviceHealth::Degraded(DegradedCapability::DurabilityReduced)
         } else {
             DeviceHealth::Healthy
         }
