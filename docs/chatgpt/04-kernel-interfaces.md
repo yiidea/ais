@@ -143,6 +143,11 @@ pub enum KernelError {
     /// 第一版不支持的能力
     Unsupported { feature: &'static str },
 
+    /// 调用方参数与契约不符（族/类型不匹配、事务性记录走派生通道等）。
+    /// **零副作用**：返回它时内核没有写入任何字节，也不存在“部分完成”可重试。
+    /// 不可重试——同样的调用重试多少次结果都一样（ADR-0013 决策 1）。
+    InvalidArgument { detail: String },
+
     /// 设备 I/O 失败
     Io { op: IoOp, source: std::io::Error },
 
@@ -215,6 +220,7 @@ pub enum IoOp { Read, Write, Flush, Fsync, Rename, Allocate, Discard }
 | `Corrupted` | 永久失败 | 校验和不匹配、链断裂 | 不得继续；触发恢复流程并告警 | 否 |
 | `ResourceExhausted` | 需上层决策 | 容量/内存不足 | 触发回收或扩容后重试 | 视情况 |
 | `Unsupported` | 永久失败 | 第一版不实现 | 走降级路径 | 否 |
+| `InvalidArgument` | 永久失败（**零副作用**） | 调用参数与契约不符，如记录族与记录类型不匹配 | 修正调用；这条路径上没有「部分完成」可恢复 | 否 |
 | `Io` | 可自动重试（部分） | 设备错误 | 按 `op` 判断是否可重试 | 视 `op` |
 | `Internal` | 内部 bug | 不变量被破坏 | 不应出现；出现即 bug | 否 |
 
