@@ -13,7 +13,7 @@ use crate::error::{
 use crate::hal::{DeviceOp, DeviceSite, IoExecutor, StorageDevice, SyncIoExecutor};
 use crate::types::*;
 use crate::wal::{DeviceWal, DeviceWalConfig, WalBody, WalManager};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 pub mod checkpoint;
 pub mod feed;
 pub mod gc;
+pub mod live;
 pub mod object;
 pub mod state;
 pub mod txn;
@@ -30,6 +31,7 @@ pub use state::{
     PhysicalExtentEntry, VersionEntry,
 };
 pub use feed::{ChangeBatch, ChangeBatchSpec, ChangeFeed, ObjectChange, ObjectMeta};
+pub use live::{EntryVisibility, LiveSnapshotHandle, LiveSnapshotSource};
 pub use txn::{Snapshot, TxnCtx, TxnStatusMap, WriteSet};
 
 // ---------------------------------------------------------------------------
@@ -269,6 +271,9 @@ pub struct Kernel {
     pub(crate) writer: Mutex<()>,
     pub(crate) checkpoint_guard: Mutex<()>,
     pub(crate) active: Mutex<BTreeSet<TransactionId>>,
+    /// 存活快照集合（F17，ADR-0015 决策 4）：事务快照与交出去的
+    /// [`LiveSnapshotHandle`] 都在这里登记，是索引段回收判定唯一的输入。
+    pub(crate) live: Mutex<BTreeMap<SnapshotId, Snapshot>>,
     pub(crate) next_snapshot: AtomicU64,
     /// 记录 checkpoint 发布后需要保留的最小 LSN。
     pub(crate) min_required: AtomicU64,
@@ -307,6 +312,7 @@ impl Kernel {
             writer: Mutex::new(()),
             checkpoint_guard: Mutex::new(()),
             active: Mutex::new(BTreeSet::new()),
+            live: Mutex::new(BTreeMap::new()),
             next_snapshot: AtomicU64::new(1),
             min_required: AtomicU64::new(0),
         };
@@ -590,6 +596,11 @@ impl TransactionManager for Kernel {
         let lsn = self.append(&mut txn, &body)?;
         txn.start_lsn = lsn;
         self.active.lock().unwrap().insert(xid);
+        // 快照在事务存活期间一直算「存活快照」（F17）。
+        self.live
+            .lock()
+            .unwrap()
+            .insert(txn.snapshot.id, txn.snapshot.clone());
         Ok(txn)
     }
 
@@ -733,6 +744,7 @@ impl TransactionManager for Kernel {
         drop(st);
         txn.state = TxnStatus::Committed;
         self.active.lock().unwrap().remove(&txn.xid);
+        self.live.lock().unwrap().remove(&txn.snapshot.id);
         Ok(CommitReceipt {
             xid: txn.xid,
             commit_lsn,
@@ -761,6 +773,7 @@ impl TransactionManager for Kernel {
         drop(st);
         txn.state = TxnStatus::Aborted;
         self.active.lock().unwrap().remove(&txn.xid);
+        self.live.lock().unwrap().remove(&txn.snapshot.id);
         Ok(())
     }
 

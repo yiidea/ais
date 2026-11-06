@@ -119,6 +119,16 @@
 
    [04 §2.6 C5](../chatgpt/04-kernel-interfaces.md) 禁止内核直接读时钟，本 ADR 把同一要求延伸到索引层回收：条目年龄、段年龄一律由**快照存活期**（存活快照集合的变化）表达，不由墙钟表达。理由是 [06 §6.1 A8](../chatgpt/06-index-recovery.md) 的要求：同一批 WAL 记录重放两次必须得到相同的水位——若回收依赖时钟，重放的结果就不可复现。
 
+## 实现落点（MVP）
+
+形状按决策 4 冻结在 `src/kernel/live.rs`（`LiveSnapshotSource`、`EntryVisibility`），细节归实现：
+
+1. **存活 = 持有 `LiveSnapshotHandle`，不是「理解释器还在跑」**。内核的 `TransactionManager::begin` 在返回前把快照登记进集合，`commit` / `abort` 时注销；此外每个 `TxnCtx` 还持有一个同一快照的句柄，句柄被丢弃时也会注销——这样即便调用方丢了 `TxnCtx`、内核没有走正常结束路径，快照也不会永久泄漏。索引层的全量重建不需要事务，用 `LiveSnapshotHandle::capture(&kernel)` 冻结一个快照即可，它同样计入 `live_snapshots()`。
+2. **`visible` 复用 `txn::version_visible`**——与 `TransactionManager::visible` 同一个函数，不是复制其判断。`EntryVisibility` 的两个字段与 `version_visible` 的两个参数一一对应（`xmin` / `xmax`），所以索引层不可能用 LSN 或 `VersionId` 去近似可见性（06 §6.1 A1）。
+3. **墓碑用「执行删除的事务」表达**：`EntryVisibility::tombstone(deleted_by_xid)` 把删除 xid 放在「创建者」位置。这不是比喻：对旧快照而言，这个删除事务在它的快照之后提交，于是「不可见」——正是 G4 需要的「旧快照仍然需要删除前的条目」；对新快照而言它已提交，于是「可见」——正是「删除生效，墓碑不必再保留」。
+4. **`live_snapshots` 按 `SnapshotId` 排序**：同一组存活快照与同一个条目，判定结果与枚举顺序无关（判定本身是纯函数），但排序让测试与排障可以复现。
+5. **回收器本体不在内核里**：本条只提供输入。G1–G6 的合取、`reclaim_gen` 代次与「先摘链后删文件」由索引层的段清单实现。
+
 ## 备选方案
 
 1. **复用内核 `Reclaimer` 与六条件** → 前五条在索引段上恒真，段会被立即回收（边写边删）；且六条件根本表达不了「逐条目快照可见性」。改为索引层自己的判定。

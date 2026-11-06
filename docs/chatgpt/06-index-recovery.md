@@ -98,6 +98,8 @@ pub trait ChangeFeed {
 2. **一次创建只有一条 `Created`**：`ObjectCreate` 之后紧跟的首个 `ObjectVersion`（`old_version = 0`）是同一件事，内核把它折叠进 `Created.version`，不再单独报 `Versioned`。不折叠的话，每个新建对象都会在索引里先 insert 一次、再「删除不存在的旧版本 + insert」一次（§2.3 动作表）。
 3. **游标是「下一条未消费记录」的 LSN**（包含式起点），边界由 `WalManager::scan_from` 给出的记录头决定。调用方不得自行用 `lsn + 帧长` 推算——帧头 36 字节、body 按 8 字节对齐，算错一次就会落在帧内部。
 
+`LiveSnapshotSource`（F17，§5.3 的 G3/G4）同样已落成 `src/kernel/live.rs`：存活快照 = 持有 `LiveSnapshotHandle` 的快照（事务开始时登记、提交/中止或句柄丢弃时注销），`visible` 直接调用内核唯一的 `version_visible`，`EntryVisibility` 只有 `created_by_xid` / `deleted_by_xid` 两个字段——没有 LSN 与 `VersionId` 可用，所以 A1 断言（不读 LSN、不读版本号）由类型保证。
+
 ### 1.3 「滞后」是连续的量，不是一个布尔值
 
 [03 §6.1 第 9 步](03-consistency-kernel.md) 写的是「索引声明水位 < object 水位 → 标记『滞后』」。这个二值标记对**正确性**够用（滞后就是滞后），但对**查询决策**不够用：
