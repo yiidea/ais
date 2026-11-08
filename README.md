@@ -161,8 +161,8 @@ Physical Block（硬件访问单元：4K / 64K / GPU 传输粒度）
 零外部依赖、可直接运行（需要 Rust 1.75+，离线可构建）：
 
 ```bash
-cargo test                       # 63 项：内核契约、变更流、派生记录、存活快照、资源类型、平台核对
-cargo test --features test-harness   # +10 项掉电注入下的崩溃恢复（共 73）
+cargo test                       # 81 项：内核契约、变更流、派生记录、存活快照、资源类型、平台核对、索引层
+cargo test --features test-harness   # +10 项掉电注入下的崩溃恢复（共 91）
 cargo run --example quickstart   # 下面这段代码，可直接运行
 cargo run --bin ains-demo        # 写入 → 向量检索 → Intent 管线 → 删除 → 检查点 → 重启恢复
 ```
@@ -224,11 +224,12 @@ Rust MVP 已实现并全部测试通过：
 - `src/kernel/feed`：F16 `ChangeFeed`（对象变更流 + 游标分页 + 未决事务屏障 + 截断水位显式失败），索引追赶者的唯一读入口；
 - `src/kernel/live`：F17 `LiveSnapshotSource`（存活快照集合 + 逐条目可见性，复用内核唯一的 `version_visible`），索引段回收器 G3/G4 的唯一输入；
 - `src/platform`：启动期平台核对（07 §1.2 / §5）——部署声明与设备自报的耐久等级、对齐、discard 能力逐台比对，能力不足直接拒绝启动，降级写进 `PlatformReport` 交给运维；`select_backend` 按 §5.3 决策表在启动期定下 io_uring / SPDK / POSIX，`check_direct_io` 执行 §5.4 的对齐规则（未对齐返 `InvalidArgument`，不静默降级）；核对失败时内核根本不会被打开；
+- `src/index`：索引层（08 §2 的五个部件，内核之外的调用方）——`segment` 定义自校验段格式（段头 + 逐条目 CRC32C），`manifest` 以 `Advance` 票据在类型层面保证「先发布段、再推进水位」且水位单调、CAS 单写者，`catchup` 消费 F16 并对历史截断显式返回 `RebuildRequired`，`builder` 按 06 §2.3 动作表产段并经 `append_derived` 记录发布，`reclaim` 按 ADR-0015 的 G1–G6 判定（读失败按可见处理，保守保留）；
 - `src/engine`：Document 载荷、暴力向量检索、Intent 管线；
 - `src/testing`（feature `test-harness`）：故障注入设备与确定性注入器，验证崩溃恢复契约；
 - `examples/quickstart`：README §6 的代码，作为编译检查长期存在。
 
-验证方式：`cargo test`（63 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
+验证方式：`cargo test`（81 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
 
 CI（`.github/workflows/ci.yml`）对每个 PR 跑这些任务：`rustfmt`、`clippy`（默认与 `--all-features` 两种组合，`-D warnings`）、`test` 矩阵（默认 / 全特性）、`rustdoc`（`-D warnings`，文档链接必须能解析）、`offline build`（守住零外部依赖）、`demo`（demo 与 quickstart 必须真的跑起来）、`msrv`（1.75 编译 + 测试）。
 
@@ -241,6 +242,7 @@ CI（`.github/workflows/ci.yml`）对每个 PR 跑这些任务：`rustfmt`、`cl
   - [ADR-0013](docs/adr/0013-index-manifest-in-wal.md)（索引层写内核 WAL 的窄口 + 非事务记录截断条件 T4）
   - [ADR-0014](docs/adr/0014-semlog-epoch-vs-xid-visibility.md)（SemLog 的 epoch 与内核 xid 的可见性对齐；内核侧已满足，`PlacementEpoch` 随迁移实现落地）
   - [ADR-0015](docs/adr/0015-index-segment-reclamation.md)（索引段回收判定 G1–G6 与归属；内核侧的 F17 `LiveSnapshotSource` 已实现）
+- 索引层的实现结构 → [08-index-layer.md](docs/chatgpt/08-index-layer.md)（五部件职责、崩溃点表、G1–G6 的代码形状），已在 `src/index` 落地
 - 硬件资源管理的实现细节 → [07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md)、[ADR-0010](docs/adr/0010-hardware-resource-management.md)（代价模型参数化、NUMA 亲和、队列深度与后端判据）；配套两条 ADR 已补齐：
   - [ADR-0011](docs/adr/0011-device-op-site-tagging.md)（设备级注入点：site 标签放在 `DeviceOp` 上）
   - [ADR-0016](docs/adr/0016-resource-types-freeze.md)（`DeviceHealth` / `ResourceStats` / `AccessPattern` / `FaultDomainId` 入冻结清单 F18–F21）
@@ -249,12 +251,11 @@ CI（`.github/workflows/ci.yml`）对每个 PR 跑这些任务：`rustfmt`、`cl
 
 下一步（按依赖顺序）：
 
-1. **索引层落地**（内核之外）：向量 / 元数据索引的段格式与协调区，消费 F16 `ChangeFeed`、用 F17 判可见性、经 `append_derived` 记录发布；补上 ADR-0015 的 G1–G6 回收器。
-2. **队列深度与 flush 槽位（07 §4，HRM7）**：`IoExecutor` 目前是同步 façade；要落下 QD 上限、普通 I/O 份额与 flush 预留，需要先有 reactor 与背压（`Retryable(Backpressure)`），再谈自适应。
-3. **读路径的索引可见性水位**：`engine.search` 目前直接扫描已提交对象；接上索引后必须暴露「索引已追到哪」，滞后时按 06 §3.2 选择回退策略，而不是把旧结果当最新结果。
-4. **io_uring / SPDK 后端**：`StorageDevice` 已冻结、`FileDevice` 已是 POSIX 实现，选路与对齐判据已落在 `src/platform`（07 §5），缺的是真实后端实现与 B5 压测数据。
-5. **组提交与写路径并发**：MVP 用一把 writer 锁串行化写；改为每对象写意向锁 + WAL 组提交（03 §2.5）。
-6. 第一版不实现：分布式事务、完整 GPU 后端、CXL、RDMA、自研模型——但接口已预留。
+1. **队列深度与 flush 槽位（07 §4，HRM7）**：`IoExecutor` 目前是同步 façade；要落下 QD 上限、普通 I/O 份额与 flush 预留，需要先有 reactor 与背压（`Retryable(Backpressure)`），再谈自适应。
+2. **读路径的索引可见性水位**：`engine.search` 目前直接扫描已提交对象；接上索引后必须暴露「索引已追到哪」，滞后时按 06 §3.2 选择回退策略，而不是把旧结果当最新结果。
+3. **io_uring / SPDK 后端**：`StorageDevice` 已冻结、`FileDevice` 已是 POSIX 实现，选路与对齐判据已落在 `src/platform`（07 §5），缺的是真实后端实现与 B5 压测数据。
+4. **组提交与写路径并发**：MVP 用一把 writer 锁串行化写；改为每对象写意向锁 + WAL 组提交（03 §2.5）。
+5. 第一版不实现：分布式事务、完整 GPU 后端、CXL、RDMA、自研模型——但接口已预留。
 
 **最终定位**：
 

@@ -63,6 +63,24 @@ pub enum CorruptionKind {
     ChecksumMismatch,
     VersionChainBroken,
     DirectoryDangling,
+    /// 索引段：长度不足，读不到完整段头或完整条目。
+    SegmentTruncated,
+    /// 索引段：段头识别字不符——这不是本引擎写的段。
+    SegmentBadMagic,
+    /// 索引段：格式版本不认识。
+    SegmentBadVersion {
+        found: u16,
+    },
+    /// 索引段：整段摘要不符（06 §5.1 的「段文件校验失败」）。
+    SegmentContentCrc,
+    /// 索引段：某一条的 CRC 不符，能定位到具体条目。
+    SegmentEntryCrc,
+    /// 索引段：条目形态字节不在 `{0, 1}` 内。
+    SegmentBadEntryKind {
+        found: u8,
+    },
+    /// 索引段：`entry_count` 之外的剩余字节。容忍它等于接受来源不明的数据。
+    SegmentTrailingBytes,
 }
 
 /// 内部错误码：出现即内核 bug。

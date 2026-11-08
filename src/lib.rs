@@ -6,6 +6,7 @@
 //! - 设备 HAL 与同步 façade：[`hal`]（04 §6）
 //! - WAL 二进制格式与扫描：[`wal`]（03 §2）
 //! - 内核模块：[`kernel`]（04 §3–§11）
+//! - 索引层（内核之外的调用方）：[`index`]（06、08）
 //! - 启动期平台核对：[`platform`]（07 §1.2 / §5）
 //! - 面向 AI 的对象/向量/意图 API：[`engine`]
 //! - 故障注入夹具（feature = `test-harness`）：模块 `testing`（05）
@@ -20,6 +21,7 @@ pub mod clock;
 pub mod engine;
 pub mod error;
 pub mod hal;
+pub mod index;
 pub mod kernel;
 pub mod platform;
 pub mod types;

@@ -559,6 +559,25 @@ impl Kernel {
     pub fn all_object_ids(&self) -> Vec<ObjectId> {
         self.state.lock().unwrap().objects.keys().copied().collect()
     }
+
+    /// 读**指定版本**的两个 xid（08 §2.2：索引条目的 `created_by_xid` / `deleted_by_xid`）。
+    ///
+    /// 与 `read_version` 的区别：它按版本号直取，不走快照——索引构建器读的是变更
+    /// 指定的那个版本，不是「快照下的可见版本」（06 §2.2）。
+    ///
+    /// 删除方向（06 §2.6）：对象级 `deleted_xid` 可能晚于**墓碑目标版本**，
+    /// 因此对变更指定的版本，优先取版本自身的 `xmax`；版本从未被取代时，
+    /// 才回落到对象级删除事务——那才是「这个版本被删除」的真实事务号。
+    pub fn version_xids(
+        &self,
+        id: ObjectId,
+        ver: VersionId,
+    ) -> Option<(TransactionId, Option<TransactionId>)> {
+        let st = self.state.lock().unwrap();
+        let o = st.objects.get(&id)?;
+        let v = o.versions.iter().find(|v| v.version == ver)?;
+        Some((v.xmin, v.xmax.or(o.deleted_xid)))
+    }
 }
 
 impl TransactionManager for Kernel {
