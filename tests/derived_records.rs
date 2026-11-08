@@ -80,7 +80,10 @@ fn accepted_records_are_appended_and_scannable() {
     let start = k.wal().durable_lsn();
     let lsn = k
         .wal()
-        .append_derived(&derived(RecordType::IndexDelta, &delta), DerivedFamily::Index)
+        .append_derived(
+            &derived(RecordType::IndexDelta, &delta),
+            DerivedFamily::Index,
+        )
         .expect("append index delta");
     assert_eq!(lsn, start);
     k.wal().flush_upto(lsn).expect("flush");
@@ -170,10 +173,17 @@ fn mismatched_family_writes_nothing() {
     };
     assert!(k
         .wal()
-        .append_derived(&derived(RecordType::ObjectCreate, &obj), DerivedFamily::Index)
+        .append_derived(
+            &derived(RecordType::ObjectCreate, &obj),
+            DerivedFamily::Index
+        )
         .is_err());
 
-    assert_eq!(k.wal().durable_lsn(), before_lsn, "rejected call advanced durable_lsn");
+    assert_eq!(
+        k.wal().durable_lsn(),
+        before_lsn,
+        "rejected call advanced durable_lsn"
+    );
     assert_eq!(
         k.wal().scan_from(Lsn(0)).expect("scan").last_valid_lsn,
         before_scan,
@@ -183,7 +193,10 @@ fn mismatched_family_writes_nothing() {
     // 之后合法追加仍从原来的边界开始，说明没有留下半截帧。
     let lsn = k
         .wal()
-        .append_derived(&derived(RecordType::IndexDelta, &delta), DerivedFamily::Index)
+        .append_derived(
+            &derived(RecordType::IndexDelta, &delta),
+            DerivedFamily::Index,
+        )
         .expect("append index delta");
     let scan = k.wal().scan_from(before_scan).expect("scan");
     assert_eq!(scan.records.first().map(|r| r.lsn), Some(lsn));
@@ -225,7 +238,10 @@ fn transactional_fields_are_rejected() {
         .expect_err("prev_lsn must be zero");
     assert!(matches!(err, ains::KernelError::InvalidArgument { .. }));
 
-    assert_eq!(k.wal().scan_from(Lsn(0)).expect("scan").last_valid_lsn, before);
+    assert_eq!(
+        k.wal().scan_from(Lsn(0)).expect("scan").last_valid_lsn,
+        before
+    );
 }
 
 #[test]
@@ -252,7 +268,10 @@ fn change_feed_ignores_derived_records() {
     };
     let lsn = k
         .wal()
-        .append_derived(&derived(RecordType::IndexDelta, &delta), DerivedFamily::Index)
+        .append_derived(
+            &derived(RecordType::IndexDelta, &delta),
+            DerivedFamily::Index,
+        )
         .expect("append");
     k.wal().flush_upto(lsn).expect("flush");
 
@@ -262,7 +281,11 @@ fn change_feed_ignores_derived_records() {
         .scan_changes(from, to, &ChangeBatchSpec::unbounded())
         .expect("scan_changes");
     assert!(!batch.blocked_by_pending_txn);
-    assert_eq!(batch.changes.len(), 1, "only the create is an object change");
+    assert_eq!(
+        batch.changes.len(),
+        1,
+        "only the create is an object change"
+    );
     assert_eq!(batch.changes[0].object(), id);
 }
 

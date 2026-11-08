@@ -3,7 +3,9 @@
 use crate::checksum::crc32c;
 use crate::error::KernelResult;
 use crate::hal::StorageDevice;
-use crate::kernel::{CommitReceipt, Kernel, KernelConfig, ObjectManager, TransactionManager, TxnCtx};
+use crate::kernel::{
+    CommitReceipt, Kernel, KernelConfig, ObjectManager, TransactionManager, TxnCtx,
+};
 use crate::testing::FaultIo;
 use crate::types::*;
 use crate::wal::{DeviceWal, DeviceWalConfig};
@@ -52,7 +54,12 @@ pub fn wal_on(dev: Box<dyn StorageDevice>) -> KernelResult<DeviceWal> {
     let io = Arc::new(crate::hal::SyncIoExecutor::new(dev));
     DeviceWal::open(
         io,
-        DeviceWalConfig::new(DeviceId(1), 0, Layout::WAL_SEGMENT_SIZE, Layout::WAL_SEGMENTS),
+        DeviceWalConfig::new(
+            DeviceId(1),
+            0,
+            Layout::WAL_SEGMENT_SIZE,
+            Layout::WAL_SEGMENTS,
+        ),
     )
 }
 

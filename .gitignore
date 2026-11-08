@@ -11,3 +11,8 @@
 # Python 缓存（文档脚本的残留）
 .ruff_cache/
 __pycache__/
+
+# 本地 shell 环境片段：里面有 API token，任何情况下都不入库
+/prsrc
+/.env
+/env.sh

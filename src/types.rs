@@ -64,8 +64,14 @@ macro_rules! id_type {
     };
 }
 
-id_type!(VersionId, "对象内单调的版本号；禁止跨 ObjectId 比较（F1.2）。");
-id_type!(TransactionId, "全局单调事务号；回收的 xid 槽位不得复用（F1.5）。");
+id_type!(
+    VersionId,
+    "对象内单调的版本号；禁止跨 ObjectId 比较（F1.2）。"
+);
+id_type!(
+    TransactionId,
+    "全局单调事务号；回收的 xid 槽位不得复用（F1.5）。"
+);
 id_type!(Lsn, "WAL 逻辑字节偏移；只描述写入先后（F1.3）。");
 id_type!(ExtentId, "逻辑 extent 标识。");
 id_type!(PhysicalExtentId, "物理 extent 标识。");
@@ -219,7 +225,9 @@ pub struct ResourceStats {
 impl ResourceStats {
     /// 可分配余量。**导出而非存储**：存下来就会出现「三字段互相矛盾」的状态（F19）。
     pub fn available(&self) -> u64 {
-        self.capacity.saturating_sub(self.used).saturating_sub(self.reserved)
+        self.capacity
+            .saturating_sub(self.used)
+            .saturating_sub(self.reserved)
     }
 }
 

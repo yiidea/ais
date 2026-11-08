@@ -5,11 +5,11 @@
 
 use crate::checksum::crc32c;
 use crate::error::{CorruptionKind, InternalCode, KernelError, KernelResult};
+use crate::kernel::txn::TxnStatusMap;
 use crate::types::{
     CheckpointId, DeviceId, ExtentId, Lsn, MappingId, MappingVersion, ObjectId, ObjectType,
     PhysicalExtentId, TransactionId, TxnStatus, VersionId, VersionState,
 };
-use crate::kernel::txn::TxnStatusMap;
 use std::collections::BTreeMap;
 
 pub const CHECKPOINT_MAGIC: u32 = 0x4143_4B50; // "ACKP"
@@ -285,8 +285,9 @@ impl KernelState {
                     version: VersionId(r.u64()?),
                     xmin: TransactionId(r.u64()?),
                     xmax: none_if_zero_txn(r.u64()?),
-                    state: VersionState::from_u8(r.u8()?)
-                        .ok_or_else(|| KernelError::corrupted(CorruptionKind::CheckpointManifest))?,
+                    state: VersionState::from_u8(r.u8()?).ok_or_else(|| {
+                        KernelError::corrupted(CorruptionKind::CheckpointManifest)
+                    })?,
                     extent: none_if_zero_extent(r.u64()?),
                     created_lsn: Lsn(r.u64()?),
                 });
@@ -315,8 +316,9 @@ impl KernelState {
                     length: r.u64()?,
                     alloc_xid: TransactionId(r.u64()?),
                     alloc_lsn: Lsn(r.u64()?),
-                    state: ExtentState::from_u8(r.u8()?)
-                        .ok_or_else(|| KernelError::corrupted(CorruptionKind::CheckpointManifest))?,
+                    state: ExtentState::from_u8(r.u8()?).ok_or_else(|| {
+                        KernelError::corrupted(CorruptionKind::CheckpointManifest)
+                    })?,
                 },
             );
         }
@@ -347,8 +349,9 @@ impl KernelState {
                     mapping: MappingId(r.u64()?),
                     version: MappingVersion(r.u64()?),
                     physical: PhysicalExtentId(r.u64()?),
-                    state: MappingState::from_u8(r.u8()?)
-                        .ok_or_else(|| KernelError::corrupted(CorruptionKind::CheckpointManifest))?,
+                    state: MappingState::from_u8(r.u8()?).ok_or_else(|| {
+                        KernelError::corrupted(CorruptionKind::CheckpointManifest)
+                    })?,
                 });
             }
             mappings.insert(

@@ -2,6 +2,8 @@
 name = "ains"
 version = "0.1.0"
 edition = "2021"
+# 代码里用到 std::io::Error::other（1.74 起稳定），MSRV 由 CI 的 msrv 任务守住。
+rust-version = "1.75"
 description = "AINS — AI-Native Storage Engine (MVP kernel)"
 license = "Apache-2.0"
 

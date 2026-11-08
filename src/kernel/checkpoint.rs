@@ -5,7 +5,7 @@
 //! 再原子切换 superblock，最后推进 WAL 可截断水位。
 
 use super::{
-    CheckpointInfo, CheckpointManager, CheckpointId, Kernel, ReclaimPlan, RecoveredState,
+    CheckpointId, CheckpointInfo, CheckpointManager, Kernel, ReclaimPlan, RecoveredState,
     RecoveryManager, VerifyReport, VerifyScope,
 };
 use crate::error::{IdKind, KernelError, KernelResult};
@@ -68,10 +68,7 @@ impl CheckpointManager for Kernel {
                 e.state != ExtentState::Freed
                     && e.alloc_lsn.0 <= st.checkpoint_lsn.0
                     && e.alloc_xid.0 != 0
-                    && matches!(
-                        st.txn_status.get(&e.alloc_xid),
-                        Some(TxnStatus::Aborted)
-                    )
+                    && matches!(st.txn_status.get(&e.alloc_xid), Some(TxnStatus::Aborted))
             })
             .map(|e| e.extent)
             .collect();
@@ -105,8 +102,7 @@ impl RecoveryManager for Kernel {
                             .or_insert(TxnStatus::Running);
                     }
                     WalBody::TxnCommit => {
-                        st.txn_status
-                            .insert(rec.record.xid, TxnStatus::Committed);
+                        st.txn_status.insert(rec.record.xid, TxnStatus::Committed);
                     }
                     WalBody::TxnAbort => {
                         st.txn_status.insert(rec.record.xid, TxnStatus::Aborted);
@@ -224,10 +220,7 @@ impl RecoveryManager for Kernel {
             match st.mappings.get(ext) {
                 None => report.issues.push(format!("extent {ext} has no mapping")),
                 Some(m) => {
-                    let rec = m
-                        .records
-                        .iter()
-                        .find(|r| r.version == m.current_version);
+                    let rec = m.records.iter().find(|r| r.version == m.current_version);
                     match rec {
                         None => report
                             .issues
@@ -310,12 +303,15 @@ fn apply_record(
             let ext = ExtentId(*extent);
             let mid = MappingId(*mapping_id);
             let pe = PhysicalExtentId(*physical_extent);
-            let entry = st.mappings.entry(ext).or_insert_with(|| super::MappingEntry {
-                extent: ext,
-                current_version: MappingVersion(0),
-                current_mapping: MappingId(0),
-                records: Vec::new(),
-            });
+            let entry = st
+                .mappings
+                .entry(ext)
+                .or_insert_with(|| super::MappingEntry {
+                    extent: ext,
+                    current_version: MappingVersion(0),
+                    current_mapping: MappingId(0),
+                    records: Vec::new(),
+                });
             if !entry.records.iter().any(|r| r.mapping == mid) {
                 let version = MappingVersion(entry.current_version.0 + 1);
                 entry.records.push(super::MappingRecord {
@@ -355,12 +351,15 @@ fn apply_record(
             if !committed {
                 return;
             }
-            let o = st.objects.entry(*object_id).or_insert_with(|| super::ObjectEntry {
-                object_type: ObjectType::Document,
-                created_xid: xid,
-                deleted_xid: None,
-                versions: Vec::new(),
-            });
+            let o = st
+                .objects
+                .entry(*object_id)
+                .or_insert_with(|| super::ObjectEntry {
+                    object_type: ObjectType::Document,
+                    created_xid: xid,
+                    deleted_xid: None,
+                    versions: Vec::new(),
+                });
             if o.versions.iter().any(|v| v.version == *new_version) {
                 return;
             }
@@ -457,8 +456,7 @@ fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> KernelResult<()> {
         f.sync_all()
             .map_err(|e| KernelError::io(crate::error::IoOp::Fsync, e))?;
     }
-    std::fs::rename(&tmp, path)
-        .map_err(|e| KernelError::io(crate::error::IoOp::Rename, e))?;
+    std::fs::rename(&tmp, path).map_err(|e| KernelError::io(crate::error::IoOp::Rename, e))?;
     // 发布后 fsync 父目录，保证 rename 本身持久。
     if let Some(parent) = path.parent() {
         if let Ok(dir) = std::fs::File::open(parent) {

@@ -92,7 +92,11 @@ pub fn execute(engine: &Engine, req: IntentRequest) -> KernelResult<IntentRespon
                 }
             }
             Op::Read { id } => {
-                candidates = Some(if docs.contains_key(&id) { vec![id] } else { vec![] });
+                candidates = Some(if docs.contains_key(&id) {
+                    vec![id]
+                } else {
+                    vec![]
+                });
                 scores.insert(id, 1.0);
             }
         }

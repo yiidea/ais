@@ -26,6 +26,8 @@ impl FileDevice {
         let path = path.as_ref();
         let file = OpenOptions::new()
             .create(true)
+            // 不截断：打开已有介质文件等价于「同一块盘重启」，内容必须保留。
+            .truncate(false)
             .read(true)
             .write(true)
             .open(path)?;
@@ -53,7 +55,7 @@ impl FileDevice {
         if loc.offset.saturating_add(loc.length) > self.descriptor.capacity {
             return Err(KernelError::io(
                 IoOp::Write,
-                std::io::Error::new(std::io::ErrorKind::Other, "out of device capacity"),
+                std::io::Error::other("out of device capacity"),
             ));
         }
         Ok(())
@@ -113,10 +115,7 @@ impl StorageDevice for FileDevice {
             if level > self.max_durability {
                 return Err(KernelError::io(
                     IoOp::Flush,
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "requested durability exceeds device capability",
-                    ),
+                    std::io::Error::other("requested durability exceeds device capability"),
                 ));
             }
             if level == DurabilityLevel::Durable {

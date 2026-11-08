@@ -14,8 +14,11 @@ fn config(tag: &str) -> KernelConfig {
 }
 
 fn open(tag: &str) -> Kernel {
-    Kernel::open(config(tag), Box::new(MemDevice::new(DeviceId(1), 8 * 1024 * 1024)))
-        .expect("open")
+    Kernel::open(
+        config(tag),
+        Box::new(MemDevice::new(DeviceId(1), 8 * 1024 * 1024)),
+    )
+    .expect("open")
 }
 
 #[test]
@@ -35,7 +38,10 @@ fn create_commit_visible_after_commit_only() {
 
     TransactionManager::commit(&kernel, &mut txn).unwrap();
     let after = kernel.fresh_snapshot();
-    assert_eq!(ObjectManager::resolve_version(&kernel, id, &after).unwrap(), VersionId(1));
+    assert_eq!(
+        ObjectManager::resolve_version(&kernel, id, &after).unwrap(),
+        VersionId(1)
+    );
 }
 
 #[test]
@@ -51,7 +57,13 @@ fn abort_leaves_object_invisible() {
     TransactionManager::abort(&kernel, &mut txn).unwrap();
     let snap = kernel.fresh_snapshot();
     assert!(ObjectManager::resolve_version(&kernel, id, &snap).is_err());
-    assert_eq!(RecoveryManager::verify(&kernel, VerifyScope::Full).unwrap().issues.len(), 0);
+    assert_eq!(
+        RecoveryManager::verify(&kernel, VerifyScope::Full)
+            .unwrap()
+            .issues
+            .len(),
+        0
+    );
 }
 
 #[test]
@@ -75,7 +87,10 @@ fn update_creates_new_version_and_hides_old() {
     TransactionManager::commit(&kernel, &mut txn2).unwrap();
 
     let snap = kernel.fresh_snapshot();
-    assert_eq!(ObjectManager::resolve_version(&kernel, id, &snap).unwrap(), VersionId(2));
+    assert_eq!(
+        ObjectManager::resolve_version(&kernel, id, &snap).unwrap(),
+        VersionId(2)
+    );
     let view = ObjectManager::read_version(&kernel, id, VersionId(1)).unwrap();
     assert_eq!(view.version.state, VersionState::Obsolete);
 }
@@ -96,7 +111,9 @@ fn payload_roundtrip_bytes_match() {
     let snap = kernel.fresh_snapshot();
     let ver = ObjectManager::resolve_version(&kernel, id, &snap).unwrap();
     let view = ObjectManager::read_version(&kernel, id, ver).unwrap();
-    let bytes = kernel.read_extent_bytes(view.version.extent.unwrap()).unwrap();
+    let bytes = kernel
+        .read_extent_bytes(view.version.extent.unwrap())
+        .unwrap();
     assert_eq!(&bytes[..payload.len()], &payload[..]);
 }
 
@@ -196,7 +213,13 @@ fn checkpoint_and_recovery_preserve_committed_state() {
         let view = ObjectManager::read_version(&kernel, id, VersionId(1)).unwrap();
         assert_eq!(view.version.state, VersionState::Published);
         assert!(commit_lsn.0 > 0);
-        assert_eq!(RecoveryManager::verify(&kernel, VerifyScope::Full).unwrap().issues.len(), 0);
+        assert_eq!(
+            RecoveryManager::verify(&kernel, VerifyScope::Full)
+                .unwrap()
+                .issues
+                .len(),
+            0
+        );
     }
 }
 
@@ -213,7 +236,10 @@ fn corrupted_checkpoint_is_not_silently_ignored() {
         Ok(_) => panic!("corrupted checkpoint must not open silently"),
         Err(e) => e,
     };
-    assert!(matches!(err, ains::KernelError::Corrupted(_)), "got {err:?}");
+    assert!(
+        matches!(err, ains::KernelError::Corrupted(_)),
+        "got {err:?}"
+    );
 }
 
 #[test]
@@ -273,5 +299,11 @@ fn gc_reclaims_after_checkpoint_and_obsolete_versions() {
     let decision = Reclaimer::judge(&kernel, &cand).unwrap();
     assert!(decision.reclaimable, "reasons: {:?}", decision.reasons);
     Reclaimer::reclaim(&kernel, &cand).unwrap();
-    assert_eq!(RecoveryManager::verify(&kernel, VerifyScope::Full).unwrap().issues.len(), 0);
+    assert_eq!(
+        RecoveryManager::verify(&kernel, VerifyScope::Full)
+            .unwrap()
+            .issues
+            .len(),
+        0
+    );
 }

@@ -89,19 +89,37 @@ pub enum IoOp {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum KernelError {
-    NotFound { kind: IdKind, id: String },
-    AlreadyExists { kind: IdKind, id: String },
+    NotFound {
+        kind: IdKind,
+        id: String,
+    },
+    AlreadyExists {
+        kind: IdKind,
+        id: String,
+    },
     Conflict(ConflictKind),
     Retryable(RetryReason),
     Corrupted(CorruptionKind),
-    ResourceExhausted { resource: ResourceType },
-    Unsupported { feature: &'static str },
+    ResourceExhausted {
+        resource: ResourceType,
+    },
+    Unsupported {
+        feature: &'static str,
+    },
     /// 调用参数自相矛盾，且**没有写入任何东西**（ADR-0013 决策 1：记录族与记录类型
     /// 不匹配、非事务通道收到事务族记录等）。与 `Conflict`（并发导致的失败）不同，
     /// 重试同一个调用只会得到同一个结果。
-    InvalidArgument { detail: String },
-    Io { op: IoOp, source: std::io::Error },
-    Internal { code: InternalCode, detail: String },
+    InvalidArgument {
+        detail: String,
+    },
+    Io {
+        op: IoOp,
+        source: std::io::Error,
+    },
+    Internal {
+        code: InternalCode,
+        detail: String,
+    },
 }
 
 impl KernelError {
@@ -139,7 +157,9 @@ impl KernelError {
     pub fn is_retryable(&self) -> bool {
         match self {
             KernelError::Retryable(_) => true,
-            KernelError::Io { op, .. } => matches!(op, IoOp::Read | IoOp::Write | IoOp::Flush | IoOp::Fsync),
+            KernelError::Io { op, .. } => {
+                matches!(op, IoOp::Read | IoOp::Write | IoOp::Flush | IoOp::Fsync)
+            }
             _ => false,
         }
     }
@@ -164,7 +184,9 @@ impl fmt::Display for KernelError {
             KernelError::Unsupported { feature } => write!(f, "unsupported: {feature}"),
             KernelError::InvalidArgument { detail } => write!(f, "invalid argument: {detail}"),
             KernelError::Io { op, source } => write!(f, "io error during {op:?}: {source}"),
-            KernelError::Internal { code, detail } => write!(f, "internal error {code:?}: {detail}"),
+            KernelError::Internal { code, detail } => {
+                write!(f, "internal error {code:?}: {detail}")
+            }
         }
     }
 }

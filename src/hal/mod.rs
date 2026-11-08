@@ -39,13 +39,25 @@ pub trait StorageDevice: Send + Sync {
     fn descriptor(&self) -> &DeviceDescriptor;
 
     /// 顺序写一段数据（不保证持久）。
-    fn write<'a>(&'a self, loc: &'a PhysicalLocation, buf: &'a [u8]) -> BoxFuture<'a, KernelResult<()>>;
+    fn write<'a>(
+        &'a self,
+        loc: &'a PhysicalLocation,
+        buf: &'a [u8],
+    ) -> BoxFuture<'a, KernelResult<()>>;
 
     /// 读取一段数据。
-    fn read<'a>(&'a self, loc: &'a PhysicalLocation, buf: &'a mut [u8]) -> BoxFuture<'a, KernelResult<()>>;
+    fn read<'a>(
+        &'a self,
+        loc: &'a PhysicalLocation,
+        buf: &'a mut [u8],
+    ) -> BoxFuture<'a, KernelResult<()>>;
 
     /// 刷盘到指定耐久等级。
-    fn flush<'a>(&'a self, loc: &'a PhysicalLocation, level: DurabilityLevel) -> BoxFuture<'a, KernelResult<()>>;
+    fn flush<'a>(
+        &'a self,
+        loc: &'a PhysicalLocation,
+        level: DurabilityLevel,
+    ) -> BoxFuture<'a, KernelResult<()>>;
 
     /// 归还设备空间（TRIM / deallocate）；不可用时返回 Unsupported。
     fn discard<'a>(&'a self, loc: &'a PhysicalLocation) -> BoxFuture<'a, KernelResult<()>>;
@@ -190,11 +202,15 @@ pub trait IoExecutor: Send + Sync {
 
     /// 读取并回填缓冲区。这是 `DeviceOp::Read` 的便捷形式，
     /// 避免调用方为了拿回数据再实现一次 reactor 协议。
-    fn read_into(&self, site: DeviceSite, loc: &PhysicalLocation, buf: &mut [u8]) -> KernelResult<()>;
+    fn read_into(
+        &self,
+        site: DeviceSite,
+        loc: &PhysicalLocation,
+        buf: &mut [u8],
+    ) -> KernelResult<()>;
 
     /// 设备描述（供放置与诊断使用）。
     fn descriptor(&self) -> &DeviceDescriptor;
 
     fn max_durability(&self) -> DurabilityLevel;
 }
-

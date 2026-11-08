@@ -389,8 +389,8 @@ impl WalManager for DeviceWal {
                         // 全零 = 段尾（正常）。但若剩余空间足够一帧、且首 4 字节像
                         // 一个非零长度，就说明读到了残缺帧，这才是真损坏。
                         let rest = &chunk[off..];
-                        let looks_like_torn_frame = rest.len() >= RECORD_HEADER_SIZE
-                            && rest[0..4].iter().any(|b| *b != 0);
+                        let looks_like_torn_frame =
+                            rest.len() >= RECORD_HEADER_SIZE && rest[0..4].iter().any(|b| *b != 0);
                         if looks_like_torn_frame {
                             out.stopped_at_corruption = true;
                         }

@@ -26,12 +26,12 @@ pub mod object;
 pub mod state;
 pub mod txn;
 
+pub use feed::{ChangeBatch, ChangeBatchSpec, ChangeFeed, ObjectChange, ObjectMeta};
+pub use live::{EntryVisibility, LiveSnapshotHandle, LiveSnapshotSource};
 pub use state::{
     ExtentEntry, ExtentState, KernelState, MappingEntry, MappingRecord, MappingState, ObjectEntry,
     PhysicalExtentEntry, VersionEntry,
 };
-pub use feed::{ChangeBatch, ChangeBatchSpec, ChangeFeed, ObjectChange, ObjectMeta};
-pub use live::{EntryVisibility, LiveSnapshotHandle, LiveSnapshotSource};
 pub use txn::{Snapshot, TxnCtx, TxnStatusMap, WriteSet};
 
 // ---------------------------------------------------------------------------
@@ -141,8 +141,12 @@ pub trait ObjectManager: Send + Sync {
 }
 
 pub trait ExtentManager: Send + Sync {
-    fn split(&self, id: ObjectId, comp: ComponentId, layout: LayoutType)
-        -> KernelResult<Vec<ExtentId>>;
+    fn split(
+        &self,
+        id: ObjectId,
+        comp: ComponentId,
+        layout: LayoutType,
+    ) -> KernelResult<Vec<ExtentId>>;
     fn allocate_logical(&self, txn: &mut TxnCtx, spec: &ExtentSpec) -> KernelResult<ExtentId>;
     fn write_payload(
         &self,
@@ -289,10 +293,7 @@ impl Kernel {
     /// 生产路径走 [`Kernel::open`]（内部建同步 façade）；测试夹具用它挂在
     /// 注入型执行器上（05 §5 的 L2 崩溃层）。这不是冻结合同的一部分：
     /// 内核对外仍然只通过 `IoExecutor` 触达设备（04 §6.3 I3），换个实现不改变任何语义。
-    pub fn open_with_io(
-        config: KernelConfig,
-        io: Arc<dyn IoExecutor>,
-    ) -> KernelResult<Self> {
+    pub fn open_with_io(config: KernelConfig, io: Arc<dyn IoExecutor>) -> KernelResult<Self> {
         let wal = Arc::new(DeviceWal::open(
             Arc::clone(&io),
             DeviceWalConfig::new(
@@ -360,7 +361,10 @@ impl Kernel {
                 .iter()
                 .find(|r| r.version == m.current_version)
                 .ok_or_else(|| {
-                    KernelError::internal(InternalCode::InvariantViolation, "mapping version missing")
+                    KernelError::internal(
+                        InternalCode::InvariantViolation,
+                        "mapping version missing",
+                    )
                 })?;
             let pe = st.physical.get(&rec.physical).ok_or_else(|| {
                 KernelError::internal(InternalCode::InvariantViolation, "physical extent missing")
@@ -400,19 +404,13 @@ impl Kernel {
         }
     }
 
-    pub(crate) fn append(
-        &self,
-        txn: &mut TxnCtx,
-        body: &WalBody,
-    ) -> KernelResult<Lsn> {
-        let lsn = self
-            .wal
-            .append(&crate::wal::WalRecord::new(
-                body.record_type(),
-                txn.xid,
-                txn.prev_lsn,
-                body.encode(),
-            ))?;
+    pub(crate) fn append(&self, txn: &mut TxnCtx, body: &WalBody) -> KernelResult<Lsn> {
+        let lsn = self.wal.append(&crate::wal::WalRecord::new(
+            body.record_type(),
+            txn.xid,
+            txn.prev_lsn,
+            body.encode(),
+        ))?;
         txn.prev_lsn = lsn;
         Ok(lsn)
     }
@@ -490,9 +488,10 @@ impl Kernel {
     ) -> KernelResult<()> {
         let loc = {
             let st = self.state.lock().unwrap();
-            let p = st.physical.get(&pe).ok_or_else(|| {
-                KernelError::not_found(IdKind::Extent, pe)
-            })?;
+            let p = st
+                .physical
+                .get(&pe)
+                .ok_or_else(|| KernelError::not_found(IdKind::Extent, pe))?;
             PhysicalLocation {
                 device: p.device,
                 offset: p.offset,

@@ -111,11 +111,13 @@ impl Reclaimer for Kernel {
                 return Ok(());
             };
             let pe = e.physical;
-            let loc = pe.and_then(|pe| st.physical.get(&pe)).map(|p| PhysicalLocation {
-                device: p.device,
-                offset: p.offset,
-                length: p.length,
-            });
+            let loc = pe
+                .and_then(|pe| st.physical.get(&pe))
+                .map(|p| PhysicalLocation {
+                    device: p.device,
+                    offset: p.offset,
+                    length: p.length,
+                });
             for o in st.objects.values_mut() {
                 o.versions.retain(|v| v.extent != Some(cand.extent));
             }

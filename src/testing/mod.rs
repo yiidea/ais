@@ -272,14 +272,14 @@ impl FaultIo {
     fn crash_error(class: OpClass) -> KernelError {
         KernelError::io(
             Self::io_op(class),
-            std::io::Error::new(std::io::ErrorKind::Other, "simulated power loss"),
+            std::io::Error::other("simulated power loss"),
         )
     }
 
     fn injected_error(class: OpClass) -> KernelError {
         KernelError::io(
             Self::io_op(class),
-            std::io::Error::new(std::io::ErrorKind::Other, "injected i/o error"),
+            std::io::Error::other("injected i/o error"),
         )
     }
 

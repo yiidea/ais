@@ -20,6 +20,10 @@ pub struct MemDevice {
     descriptor: DeviceDescriptor,
     state: Mutex<MemState>,
     max_durability: DurabilityLevel,
+    /// 显式上报的健康状态（F18）。`None` 时由 `max_durability` 推导——
+    /// 那总是自洽的。测试要模拟「后端上报矛盾 / 设备彻底失效」时用
+    /// [`MemDevice::set_health`] 覆盖，让启动期核对有东西可拦（07 §5.1）。
+    health: Mutex<Option<DeviceHealth>>,
 }
 
 impl MemDevice {
@@ -34,6 +38,7 @@ impl MemDevice {
             },
             state: Mutex::new(MemState::default()),
             max_durability: DurabilityLevel::Durable,
+            health: Mutex::new(None),
         }
     }
 
@@ -41,13 +46,16 @@ impl MemDevice {
         if loc.device != self.descriptor.id {
             return Err(KernelError::internal(
                 crate::error::InternalCode::InvariantViolation,
-                format!("device mismatch: {:?} vs {:?}", loc.device, self.descriptor.id),
+                format!(
+                    "device mismatch: {:?} vs {:?}",
+                    loc.device, self.descriptor.id
+                ),
             ));
         }
         if loc.offset.saturating_add(loc.length) > self.descriptor.capacity {
             return Err(KernelError::io(
                 IoOp::Write,
-                std::io::Error::new(std::io::ErrorKind::Other, "out of device capacity"),
+                std::io::Error::other("out of device capacity"),
             ));
         }
         Ok(())
@@ -67,6 +75,14 @@ impl MemDevice {
 
     pub fn set_max_durability(&mut self, level: DurabilityLevel) {
         self.max_durability = level;
+    }
+
+    /// 覆盖上报的健康状态；`None` 恢复为「按耐久等级推导」。
+    ///
+    /// 用例需要两种现实：设备自报的 `health` 与 `max_durability` 矛盾（后端 bug），
+    /// 以及设备已 `Failed` 但还能被探测到（启动时必须在分配任何空间之前拒绝它）。
+    pub fn set_health(&self, health: impl Into<Option<DeviceHealth>>) {
+        *self.health.lock().unwrap() = health.into();
     }
 
     /// 资源域统计快照（F19）。`used` 取「已写入的不同偏移数」——假设备没有分配器等
@@ -121,7 +137,7 @@ impl StorageDevice for MemDevice {
             if st.power_lost {
                 return Err(KernelError::io(
                     IoOp::Write,
-                    std::io::Error::new(std::io::ErrorKind::Other, "device is powered off"),
+                    std::io::Error::other("device is powered off"),
                 ));
             }
             for (i, b) in buf.iter().enumerate() {
@@ -168,10 +184,7 @@ impl StorageDevice for MemDevice {
             if level > self.max_durability {
                 return Err(KernelError::io(
                     IoOp::Flush,
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "requested durability exceeds device capability",
-                    ),
+                    std::io::Error::other("requested durability exceeds device capability"),
                 ));
             }
             if level == DurabilityLevel::Durable {
@@ -211,6 +224,9 @@ impl StorageDevice for MemDevice {
     }
 
     fn health(&self) -> DeviceHealth {
+        if let Some(declared) = *self.health.lock().unwrap() {
+            return declared;
+        }
         // F18：降级必须与 `max_durability()` 一致。耐久降到 `Durable` 以下时报告
         // `DurabilityReduced`，而不是用字符串解释原因（ADR-0016 决策 3）。
         if self.max_durability < DurabilityLevel::Durable {

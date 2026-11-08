@@ -91,7 +91,10 @@ pub struct Engine {
 
 impl Engine {
     /// 打开引擎并重建派生索引（向量索引与文档缓存）。
-    pub fn open(config: KernelConfig, device: Box<dyn crate::hal::StorageDevice>) -> KernelResult<Self> {
+    pub fn open(
+        config: KernelConfig,
+        device: Box<dyn crate::hal::StorageDevice>,
+    ) -> KernelResult<Self> {
         let kernel = Kernel::open(config, device)?;
         let engine = Engine {
             kernel,
@@ -163,10 +166,7 @@ impl Engine {
             .unwrap()
             .upsert(id, payload.embedding.clone());
         self.docs.lock().unwrap().insert(id, payload);
-        self.versions
-            .lock()
-            .unwrap()
-            .insert(id, txn_version(&txn));
+        self.versions.lock().unwrap().insert(id, txn_version(&txn));
         Ok(id)
     }
 
@@ -255,13 +255,13 @@ impl Engine {
 
     fn load_payload(&self, id: ObjectId, ver: VersionId) -> KernelResult<DocumentPayload> {
         let view = ObjectManager::read_version(&self.kernel, id, ver)?;
-        let ext = view.version.extent.ok_or_else(|| {
-            KernelError::not_found(IdKind::Extent, format!("{id}@{ver:?}"))
-        })?;
+        let ext = view
+            .version
+            .extent
+            .ok_or_else(|| KernelError::not_found(IdKind::Extent, format!("{id}@{ver:?}")))?;
         let bytes = self.kernel.read_extent_bytes(ext)?;
         DocumentPayload::decode(&bytes)
     }
-
 }
 
 fn txn_version(txn: &TxnCtx) -> VersionId {

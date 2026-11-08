@@ -119,8 +119,14 @@ fn xids_committed_after_the_snapshot_are_invisible() {
     assert_eq!(k.status(late_xid), TxnStatus::Committed);
 
     let entry = EntryVisibility::new(late_xid, None);
-    assert!(!LiveSnapshotSource::visible(&*k, &entry, &early.snapshot), "born after the snapshot");
-    assert!(LiveSnapshotSource::visible(&*k, &entry, &k.fresh_snapshot()), "visible to a newer snapshot");
+    assert!(
+        !LiveSnapshotSource::visible(&*k, &entry, &early.snapshot),
+        "born after the snapshot"
+    );
+    assert!(
+        LiveSnapshotSource::visible(&*k, &entry, &k.fresh_snapshot()),
+        "visible to a newer snapshot"
+    );
     // 唯一活着的快照还是那个早期句柄：它看不见新条目。
     assert!(!k.visible_to_any_live(&entry).expect("any live"));
 
@@ -138,7 +144,10 @@ fn tombstone_direction_is_opposite_to_the_entry() {
     let created_xid = {
         let snap = k.fresh_snapshot();
         let ver = ObjectManager::resolve_version(&*k, id, &snap).expect("resolve");
-        ObjectManager::read_version(&*k, id, ver).expect("read").version.xmin
+        ObjectManager::read_version(&*k, id, ver)
+            .expect("read")
+            .version
+            .xmin
     };
 
     let reader = LiveSnapshotHandle::capture(&k);

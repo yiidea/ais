@@ -214,7 +214,11 @@ pub struct DecodedFrame {
 }
 
 /// 从缓冲区 `buf` 的 `offset` 处解码一帧。返回 `Ok(None)` 表示尾部结束/损坏。
-pub fn decode_frame(buf: &[u8], offset: usize, expected_lsn: Lsn) -> KernelResult<Option<DecodedFrame>> {
+pub fn decode_frame(
+    buf: &[u8],
+    offset: usize,
+    expected_lsn: Lsn,
+) -> KernelResult<Option<DecodedFrame>> {
     if offset + RECORD_HEADER_SIZE > buf.len() {
         return Ok(None);
     }
@@ -225,9 +229,7 @@ pub fn decode_frame(buf: &[u8], offset: usize, expected_lsn: Lsn) -> KernelResul
     }
     // body 本身 8 字节对齐，但帧头 36 字节不是 8 的倍数，
     // 因此 total_len 只要求「body 段对齐」，不能整体按 ALIGN 校验。
-    if total_len < RECORD_HEADER_SIZE
-        || (total_len - RECORD_HEADER_SIZE) % ALIGN as usize != 0
-    {
+    if total_len < RECORD_HEADER_SIZE || (total_len - RECORD_HEADER_SIZE) % ALIGN as usize != 0 {
         return Ok(None);
     }
     let Some(record_type) = RecordType::from_u8(h[4]) else {
@@ -270,7 +272,7 @@ pub fn decode_frame(buf: &[u8], offset: usize, expected_lsn: Lsn) -> KernelResul
 }
 
 pub fn align_up(v: u64, a: u64) -> u64 {
-    (v + a - 1) / a * a
+    v.div_ceil(a) * a
 }
 
 // ---------------------------------------------------------------------------
@@ -712,12 +714,7 @@ mod tests {
             object_type: 4,
             component_count: 1,
         };
-        let rec = WalRecord::new(
-            body.record_type(),
-            TransactionId(9),
-            Lsn(0),
-            body.encode(),
-        );
+        let rec = WalRecord::new(body.record_type(), TransactionId(9), Lsn(0), body.encode());
         let frame = encode_frame(&rec, Lsn(4096));
         let decoded = decode_frame(&frame, 0, Lsn(4096)).unwrap().unwrap();
         assert_eq!(decoded.record.record_type, RecordType::ObjectCreate);
@@ -729,7 +726,12 @@ mod tests {
 
     #[test]
     fn corrupted_body_is_detected() {
-        let rec = WalRecord::new(RecordType::TxnCommit, TransactionId(1), Lsn(0), vec![1, 2, 3]);
+        let rec = WalRecord::new(
+            RecordType::TxnCommit,
+            TransactionId(1),
+            Lsn(0),
+            vec![1, 2, 3],
+        );
         let mut frame = encode_frame(&rec, Lsn(0));
         frame[RECORD_HEADER_SIZE] ^= 0xff;
         assert!(decode_frame(&frame, 0, Lsn(0)).unwrap().is_none());
@@ -737,7 +739,12 @@ mod tests {
 
     #[test]
     fn corrupted_crc_is_detected() {
-        let rec = WalRecord::new(RecordType::TxnCommit, TransactionId(1), Lsn(0), vec![1, 2, 3]);
+        let rec = WalRecord::new(
+            RecordType::TxnCommit,
+            TransactionId(1),
+            Lsn(0),
+            vec![1, 2, 3],
+        );
         let mut frame = encode_frame(&rec, Lsn(0));
         frame[32] ^= 0xff;
         assert!(decode_frame(&frame, 0, Lsn(0)).unwrap().is_none());

@@ -4,7 +4,7 @@
 //! MVP 先实现语义等价的同步版本：提交 → 在当前线程 `block_on` 设备 future → 返回。
 //! 这保持了 I2「调用返回即已完成」的契约，后续替换为 reactor 线程池时接口不变。
 
-use super::{DeviceOp, DeviceResult, DeviceDescriptor, DeviceSite, IoExecutor, StorageDevice};
+use super::{DeviceDescriptor, DeviceOp, DeviceResult, DeviceSite, IoExecutor, StorageDevice};
 use crate::error::{InternalCode, KernelError, KernelResult};
 use crate::types::{DurabilityLevel, PhysicalLocation};
 use std::future::Future;
@@ -81,7 +81,12 @@ impl IoExecutor for SyncIoExecutor {
         }
     }
 
-    fn read_into(&self, _site: DeviceSite, loc: &PhysicalLocation, buf: &mut [u8]) -> KernelResult<()> {
+    fn read_into(
+        &self,
+        _site: DeviceSite,
+        loc: &PhysicalLocation,
+        buf: &mut [u8],
+    ) -> KernelResult<()> {
         if buf.len() as u64 != loc.length {
             return Err(KernelError::internal(
                 InternalCode::InvariantViolation,

@@ -2,8 +2,8 @@
 //!
 //! 运行：`cargo run --bin ains-demo`
 
-use ains::engine::Engine;
 use ains::engine::intent::{IntentRequest, Op};
+use ains::engine::Engine;
 use ains::hal::mem::MemDevice;
 use ains::kernel::{CheckpointManager, KernelConfig, RecoveryManager, VerifyScope};
 use ains::types::{DeviceId, ObjectType};

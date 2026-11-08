@@ -62,7 +62,7 @@ fn read_bytes(kernel: &Kernel, id: ObjectId) -> Option<Vec<u8>> {
     let snap = kernel.fresh_snapshot();
     let ver = ObjectManager::resolve_version(kernel, id, &snap).ok()?;
     let view = ObjectManager::read_version(kernel, id, ver).ok()?;
-    Some(kernel.read_extent_bytes(view.version.extent?).ok()?)
+    kernel.read_extent_bytes(view.version.extent?).ok()
 }
 
 fn assert_clean(kernel: &Kernel) {
@@ -94,7 +94,10 @@ fn crash_during_wal_flush_preserves_earlier_commits() {
     ));
 
     let second = commit_payload(&h.kernel, b"must-not-be-confirmed");
-    assert!(second.is_err(), "commit should fail when wal barrier crashes");
+    assert!(
+        second.is_err(),
+        "commit should fail when wal barrier crashes"
+    );
     assert!(inj.has_crashed());
     drop(h);
 
@@ -163,7 +166,7 @@ fn partial_wal_write_terminates_scan_without_corruption() {
                 .records
                 .iter()
                 .all(|r| r.lsn.0 != 0 || r.record.xid.0 == 0)
-            || scan.records.iter().all(|r| r.record.body.len() > 0),
+            || scan.records.iter().all(|r| !r.record.body.is_empty()),
         "scan must either stop at the torn frame or decode only intact frames"
     );
     let bytes = read_bytes(&h2.kernel, first).expect("first commit must survive");
@@ -332,11 +335,8 @@ fn checkpoint_then_crash_recovers_consistent_state() {
 #[should_panic(expected = "DeviceSite::Untagged")]
 fn injection_on_untagged_site_is_a_test_defect() {
     let io = FaultIo::new(Arc::new(MemDevice::new(DeviceId(1), 1 << 20)));
-    io.injector().add(Injection::before(
-        DeviceSite::Untagged,
-        1,
-        FaultKind::Crash,
-    ));
+    io.injector()
+        .add(Injection::before(DeviceSite::Untagged, 1, FaultKind::Crash));
 }
 
 /// ADR-0011 I6：未打标签的设备写 / flush 到达注入器即缺陷。

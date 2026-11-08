@@ -4,9 +4,7 @@
 //! 最后回到锁内挂上 Pending 版本。真正的 WAL 记录在 `TransactionManager::commit` 生成，
 //! 保证「先持久 data，再持久 WAL commit」（T2）。
 
-use super::{
-    CreateObjectRequest, Kernel, ObjectManager, VersionSpec,
-};
+use super::{CreateObjectRequest, Kernel, ObjectManager, VersionSpec};
 use crate::error::{IdKind, InternalCode, KernelError, KernelResult};
 use crate::kernel::state::{ObjectEntry, VersionEntry};
 use crate::kernel::txn::{Snapshot, TxnCtx};
@@ -20,12 +18,8 @@ impl ObjectManager for Kernel {
         let (object_id, extent, physical) = {
             let mut st = self.state.lock().unwrap();
             let object_id = st.alloc_object_id(self.cfg.database_id);
-            let (extent, physical) = self.allocate_payload_extent(
-                &mut st,
-                txn,
-                object_id,
-                req.payload.len() as u64,
-            )?;
+            let (extent, physical) =
+                self.allocate_payload_extent(&mut st, txn, object_id, req.payload.len() as u64)?;
             (object_id, extent, physical)
         };
 

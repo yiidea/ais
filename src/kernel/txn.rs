@@ -98,11 +98,7 @@ pub type TxnStatusMap = BTreeMap<TransactionId, TxnStatus>;
 /// `committed_in_snapshot`（03 §3.3）。
 ///
 /// 只看 xid + 事务状态 + 快照三元组，不使用 VersionId / LSN 近似（R3）。
-pub fn committed_in_snapshot(
-    xid: TransactionId,
-    snap: &Snapshot,
-    status: &TxnStatusMap,
-) -> bool {
+pub fn committed_in_snapshot(xid: TransactionId, snap: &Snapshot, status: &TxnStatusMap) -> bool {
     if xid.0 == 0 {
         // 系统事务/预置数据视为已提交。
         return true;

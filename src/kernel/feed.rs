@@ -136,7 +136,8 @@ pub trait ChangeFeed: private::Sealed {
     ///
     /// `from` 必须是本函数返回过的游标（或 `Lsn(0)`）：游标永远落在记录边界上，
     /// 边界由日志层给出，调用方不得自行推算帧长。
-    fn scan_changes(&self, from: Lsn, to: Lsn, spec: &ChangeBatchSpec) -> KernelResult<ChangeBatch>;
+    fn scan_changes(&self, from: Lsn, to: Lsn, spec: &ChangeBatchSpec)
+        -> KernelResult<ChangeBatch>;
 
     /// 枚举快照下可见的对象（全量重建路径，06 §3.1）。
     ///
@@ -155,7 +156,12 @@ impl ChangeFeed for Kernel {
         self.wal().durable_lsn()
     }
 
-    fn scan_changes(&self, from: Lsn, to: Lsn, spec: &ChangeBatchSpec) -> KernelResult<ChangeBatch> {
+    fn scan_changes(
+        &self,
+        from: Lsn,
+        to: Lsn,
+        spec: &ChangeBatchSpec,
+    ) -> KernelResult<ChangeBatch> {
         // 读取动作经 `WalManager::scan_from`（ADR-0012 决策 4），不直接触达设备。
         let scan = self.wal().scan_from(from)?;
         // 水位之上的记录不保证持久，不能承诺给追赶者（否则崩溃后索引会多出条目）。

@@ -57,10 +57,7 @@ fn resource_stats_derive_available_instead_of_storing_it() {
     };
     assert_eq!(stats.available(), 500);
     // 记账错误（used + reserved > capacity）不得下溢成天文数字。
-    let over = ResourceStats {
-        used: 900,
-        ..stats
-    };
+    let over = ResourceStats { used: 900, ..stats };
     assert_eq!(over.available(), 0);
 }
 
