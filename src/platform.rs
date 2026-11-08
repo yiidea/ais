@@ -21,6 +21,8 @@ use crate::types::{DegradedCapability, DeviceHealth, DurabilityLevel};
 /// 部署方声明的平台能力（07 §1.2 的域配置中，需要参与启动核对的那一部分）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Deployment {
+    /// 是否专用部署。共享部署永远不选 SPDK（07 §5.3 决策表）。
+    pub dedicated: bool,
     /// 是否启用 SPDK 直通后端。关闭时 `FileDevice` 的 4096 对齐只能保证「按页写」，
     /// 不能保证绕过页缓存（07 §5.1）。
     pub spdk: bool,
@@ -28,6 +30,57 @@ pub struct Deployment {
     pub fabric_lanes: Option<u16>,
     /// 持久内存（CXL / pmem）窗口的可用区间；`None` = 没有。
     pub persistent_window: Option<(u64, u64)>,
+}
+
+/// 启动期探测到的后端能力（07 §5.2 判据 1）。是输入，不是探测结果——探测在调用方。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BackendCapabilities {
+    pub io_uring: bool,
+    pub spdk: bool,
+    /// SPDK 实测收益达门槛（判据 3）。未压测时为 `false`：不测就不选。
+    pub spdk_worth_it: bool,
+    /// io_uring 路径实测达 SLO。未被压测过时按 `true` 处理，
+    /// 否则「没测过」会被误读成「测过且不达标」，SPDK 会在无证据的情况下上位。
+    pub io_uring_meets_slo: bool,
+}
+
+impl BackendCapabilities {
+    /// 只声明能力、不声明压测结论：io_uring 视为未证伪。
+    pub fn new(io_uring: bool, spdk: bool) -> Self {
+        BackendCapabilities {
+            io_uring,
+            spdk,
+            spdk_worth_it: false,
+            io_uring_meets_slo: true,
+        }
+    }
+}
+
+/// 数据路径后端（07 §5.3 决策表的三行）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IoBackend {
+    /// 用户态 NVMe 队列。
+    Spdk,
+    /// io_uring + O_DIRECT。
+    IoUring,
+    /// `preadv2` / `pwritev` + epoll；O_DIRECT 可用则用。
+    Posix,
+}
+
+/// 文件类别（07 §5.4）。O_DIRECT 是**每个文件**的选择，不是后端选择。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FileClass {
+    WalSegment,
+    IndexSegment,
+    LargePayload,
+    SmallOrMetadata,
+}
+
+impl FileClass {
+    /// WAL / 索引段 / 大 payload 开直写；小文件与元数据交给 page cache（07 §5.4 表格）。
+    pub fn wants_direct_io(self) -> bool {
+        !matches!(self, FileClass::SmallOrMetadata)
+    }
 }
 
 /// 启动核对的结果：可以继续，但需要在运维上显式记录的偏差。
@@ -110,6 +163,55 @@ impl Deployment {
         }
         Ok(report)
     }
+
+    /// 启动期后端选择（07 §5.3 决策表）。逐行匹配，命中即停。
+    ///
+    /// 先过**部署形态**：共享部署不进入 SPDK 候选，即使 SPDK 能力与收益都满足——
+    /// 用户态驱动独占设备，共享部署里没有这个前提。
+    /// 专用部署还要三条同时成立才选 SPDK：能力、收益达门槛、io_uring 实测不达 SLO。
+    pub fn select_backend(&self, caps: &BackendCapabilities) -> IoBackend {
+        if self.dedicated
+            && self.spdk
+            && caps.spdk
+            && caps.spdk_worth_it
+            && caps.io_uring
+            && !caps.io_uring_meets_slo
+        {
+            return IoBackend::Spdk;
+        }
+        if caps.io_uring {
+            return IoBackend::IoUring;
+        }
+        IoBackend::Posix
+    }
+
+    /// O_DIRECT 的读写前对齐检查（07 §5.4）。
+    ///
+    /// offset、length **以及**缓冲区长度三者都要对齐；未对齐必须返回错误，
+    /// 不能静默降级为 buffered——静默降级会让人以为走了直写路径。
+    pub fn check_direct_io(
+        &self,
+        offset: u64,
+        length: u64,
+        buf_len: usize,
+        alignment: u64,
+    ) -> KernelResult<()> {
+        let misaligned = alignment == 0
+            || offset % alignment != 0
+            || length % alignment != 0
+            || buf_len as u64 % alignment != 0;
+        if misaligned {
+            return Err(KernelError::invalid(if alignment == 0 {
+                "O_DIRECT alignment must be a positive block size".to_string()
+            } else {
+                format!(
+                    "O_DIRECT requires offset, length and buffer aligned to {alignment}; \
+                     refusing to fall back to buffered I/O (07 §5.4)"
+                )
+            }));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -179,5 +281,80 @@ mod tests {
             .check_device(&desc(), DeviceHealth::Healthy, DurabilityLevel::Write)
             .expect_err("Healthy claims Durable");
         assert!(err.must_abort() || matches!(err, KernelError::Internal { .. }));
+    }
+
+    fn spdk_deployment() -> Deployment {
+        Deployment {
+            dedicated: true,
+            spdk: true,
+            ..Deployment::default()
+        }
+    }
+
+    #[test]
+    fn backend_selection_follows_the_decision_table() {
+        let wins = BackendCapabilities {
+            io_uring: true,
+            spdk: true,
+            spdk_worth_it: true,
+            io_uring_meets_slo: false,
+        };
+        assert_eq!(spdk_deployment().select_backend(&wins), IoBackend::Spdk);
+
+        // 共享部署：SPDK 直接出局，即使能力与收益都满足。
+        let shared = Deployment {
+            dedicated: false,
+            ..spdk_deployment()
+        };
+        assert_eq!(shared.select_backend(&wins), IoBackend::IoUring);
+
+        // io_uring 达标时 SPDK 不上位。
+        let uring_ok = BackendCapabilities {
+            io_uring_meets_slo: true,
+            ..wins
+        };
+        assert_eq!(
+            spdk_deployment().select_backend(&uring_ok),
+            IoBackend::IoUring
+        );
+
+        // 未压测（没有收益证据）不选 SPDK。
+        let unmeasured = BackendCapabilities {
+            spdk_worth_it: false,
+            ..wins
+        };
+        assert_eq!(
+            spdk_deployment().select_backend(&unmeasured),
+            IoBackend::IoUring
+        );
+
+        // io_uring 不可用 → POSIX。
+        assert_eq!(
+            Deployment::default().select_backend(&BackendCapabilities::new(false, false)),
+            IoBackend::Posix
+        );
+    }
+
+    #[test]
+    fn file_classes_decide_direct_io() {
+        assert!(FileClass::WalSegment.wants_direct_io());
+        assert!(FileClass::IndexSegment.wants_direct_io());
+        assert!(FileClass::LargePayload.wants_direct_io());
+        assert!(!FileClass::SmallOrMetadata.wants_direct_io());
+    }
+
+    #[test]
+    fn unaligned_direct_io_is_an_error_not_a_silent_fallback() {
+        let d = Deployment::default();
+        d.check_direct_io(0, 4096, 4096, 4096).expect("aligned");
+
+        for (offset, length, buf) in [(512, 4096, 4096), (0, 100, 4096), (0, 4096, 100)] {
+            let err = d
+                .check_direct_io(offset, length, buf, 4096)
+                .expect_err("misaligned");
+            assert!(matches!(err, KernelError::InvalidArgument { .. }));
+            assert!(!err.is_retryable());
+        }
+        assert!(d.check_direct_io(0, 0, 0, 0).is_err());
     }
 }

@@ -5,12 +5,28 @@
 use ains::engine::intent::{IntentRequest, Op};
 use ains::engine::Engine;
 use ains::hal::mem::MemDevice;
+use ains::hal::StorageDevice;
 use ains::kernel::{CheckpointManager, KernelConfig, RecoveryManager, VerifyScope};
+use ains::platform::{BackendCapabilities, Deployment};
 use ains::types::{DeviceId, ObjectType};
 use std::collections::BTreeMap;
 
 fn main() {
     let device = Box::new(MemDevice::new(DeviceId(1), 64 * 1024 * 1024));
+
+    // 启动核对：与内核无关，必须发生在 open 之前。这里演示部署声明与设备自报之间
+    // 「只记偏差、不阻止启动」的那一类结果；能力不足的会直接返回 Err。
+    let deployment = Deployment::default();
+    let checked = deployment
+        .check_device(
+            device.descriptor(),
+            device.health(),
+            device.max_durability(),
+        )
+        .expect("platform check");
+    let backend = deployment.select_backend(&BackendCapabilities::new(false, false));
+    println!("--- 平台核对：后端 {backend:?}，偏差 {checked:?} ---");
+
     let dir = std::env::temp_dir().join("ains-demo-checkpoint");
     let _ = std::fs::remove_file(&dir);
     let config = KernelConfig::new(dir);
