@@ -226,8 +226,8 @@ assert_eq!(l1::digest(&bytes), l1::digest(b"committed-before-crash"));
 ## 6. 测试命令
 
 ```bash
-cargo test                                   # 默认特性
-cargo test --all-features                    # 含 test-harness
+cargo test                                   # 默认特性（112 项）
+cargo test --all-features                    # 含 test-harness（122 项）
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --check
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
