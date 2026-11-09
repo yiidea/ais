@@ -83,6 +83,16 @@ AINS 不是一个「支持向量的关系数据库」，也不是「NL2SQL 的�
 | [docs/chatgpt/07-hardware-resource-management.md](docs/chatgpt/07-hardware-resource-management.md) | **硬件资源管理的实现细节**：代价模型参数化与硬约束、NUMA 亲和三规则、io_uring 队列深度与 flush 槽位预留、O_DIRECT / SPDK / POSIX 的后端切换判据 |
 | [docs/chatgpt/08-index-layer.md](docs/chatgpt/08-index-layer.md) | **索引层的实现结构**（内核之外的调用方）：五个部件（CatchUp / IndexKind / SegmentBuilder / Coordinator / Reclaimer）各自读什么写什么、「先段后水位」的崩溃点表、G1–G6 在代码里的形状、覆盖判定与新鲜度、重启恢复 |
 
+### 实现文档与使用手册
+
+| 文档 | 内容 |
+|---|---|
+| [docs/code/README.md](docs/code/README.md) | 按当前代码写的实现文档索引与维护约定 |
+| [docs/code/kernel.md](docs/code/kernel.md) / [hal.md](docs/code/hal.md) | 内核（对象、版本、快照、WAL、检查点、恢复、回收）与硬件路径（设备、执行器、队列深度、reactor） |
+| [docs/code/index.md](docs/code/index.md) / [engine-intent.md](docs/code/engine-intent.md) | 索引层（五个部件、追赶、新鲜度与覆盖）与引擎（文档载荷、检索、Intent、覆盖标记） |
+| [docs/code/platform-testing.md](docs/code/platform-testing.md) | 启动期平台核对与故障注入夹具 |
+| [docs/code/usage.md](docs/code/usage.md) | 使用手册：最小程序、覆盖标记、并发与背压、崩溃恢复测试、诊断、已知限制 |
+
 ### 补充架构文档（本仓库新增，供实现落地）
 
 | 文档 | 内容 |
