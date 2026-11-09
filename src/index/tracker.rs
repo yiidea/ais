@@ -34,11 +34,21 @@ use std::collections::BTreeSet;
 pub trait MaintenanceHost: KernelLike + ChangeFeed {
     /// 事务状态（`TransactionManager::status` 的同一份判定）。
     fn txn_status(&self, xid: TransactionId) -> TxnStatus;
+
+    /// 变更流视图。
+    ///
+    /// 不能写 `self as &dyn ChangeFeed`：trait upcasting 要到 Rust 1.86 才稳定，
+    /// 而本项目 MSRV 是 1.75。显式给一个访问器，效果相同且老编译器也认。
+    fn change_feed(&self) -> &dyn ChangeFeed;
 }
 
 impl MaintenanceHost for crate::kernel::Kernel {
     fn txn_status(&self, xid: TransactionId) -> TxnStatus {
         <Self as crate::kernel::TransactionManager>::status(self, xid)
+    }
+
+    fn change_feed(&self) -> &dyn ChangeFeed {
+        self
     }
 }
 
@@ -102,12 +112,12 @@ pub fn catch_up(
     let mut report = MaintenanceReport::default();
     for _ in 0..max_batches {
         let from = manifest.watermark;
-        let (changes, next, blocked) = match catchup::step(host, from, to, spec) {
+        let (changes, next, blocked) = match catchup::step(host.change_feed(), from, to, spec) {
             Ok(CatchUpStep::Progress { changes, next }) => (changes, next, false),
             Ok(CatchUpStep::Blocked { resume_at }) => {
                 // 屏障路径：`resume_at` 之前的变更要照常应用（否则每次撞上未决事务
                 // 都会把已提交的那部分再丢掉一次），用同一个投影重新取一批。
-                let batch = host.scan_changes(from, resume_at, spec)?;
+                let batch = host.change_feed().scan_changes(from, resume_at, spec)?;
                 (batch.changes, None, true)
             }
             Ok(CatchUpStep::CaughtUp) => (Vec::new(), None, false),
@@ -122,7 +132,7 @@ pub fn catch_up(
             // 不能取调用方给的目标水位：`to` 可能是 `Lsn::MAX` 或 `object_watermark`，
             // 但内核只在 `to` 处截断，而水位越过 `object_watermark` 就会把还没持久化的
             // 记录算作已消费（06 §2.7 的反面）。`next` 正是内核给出的记录边界。
-            let to_lsn = next.unwrap_or(host.object_watermark().min(to).max(from));
+            let to_lsn = next.unwrap_or(host.change_feed().object_watermark().min(to).max(from));
             publish_batch(
                 kind,
                 host,
