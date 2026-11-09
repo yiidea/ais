@@ -17,7 +17,8 @@
 
 use crate::clock::Clock;
 use crate::error::{KernelError, RetryReason};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// 设备上报的硬顶与域配置的份额（07 §4.2）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,7 +107,7 @@ impl QueueDepth {
         self.device
     }
 
-    /// `qd_usable`：普通读写当前的在途上限（自适应调整的就是它）。
+    /// `qd_usable`：普通读写当前的在途上限（初始值，见 [`QueueDepth::initial`]）。
     pub fn usable(&self) -> u32 {
         self.usable
     }
@@ -268,28 +269,35 @@ fn pow2_floor(v: u32) -> u32 {
 /// 普通 I/O 只能占 `qd_usable` 个槽位，flush 只能占 `qd_flush_reserve` 个——
 /// 两者不共享，因此普通 I/O 再满也饿不死 flush（HRM7 的可测试形式）。
 pub struct Slots {
-    usable: u32,
+    /// 自适应调整的就是它（07 §4.3）；普通 I/O 的在途上限。
+    usable: AtomicU32,
     reserve: u32,
-    ordinary: AtomicU64,
-    flush: AtomicU64,
+    ordinary: Arc<AtomicU64>,
+    flush: Arc<AtomicU64>,
     deadline_nanos: u64,
-    clock: Box<dyn Clock>,
+    /// `Arc` 而非 `Box`：占用凭据可能被搬到别的线程（reactor 队列）里归还。
+    clock: Arc<dyn Clock>,
 }
 
 impl Slots {
-    pub fn new(qd: &QueueDepth, deadline_nanos: u64, clock: Box<dyn Clock>) -> Self {
+    pub fn new(qd: &QueueDepth, deadline_nanos: u64, clock: Arc<dyn Clock>) -> Self {
         Slots {
-            usable: qd.usable,
+            usable: AtomicU32::new(qd.usable),
             reserve: qd.flush_reserve,
-            ordinary: AtomicU64::new(0),
-            flush: AtomicU64::new(0),
+            ordinary: Arc::new(AtomicU64::new(0)),
+            flush: Arc::new(AtomicU64::new(0)),
             deadline_nanos,
             clock,
         }
     }
 
     pub fn usable(&self) -> u32 {
-        self.usable
+        self.usable.load(Ordering::SeqCst)
+    }
+
+    /// 自适应改写普通额度。flush 预留不受影响——它不归 `QdTuner` 管（HRM7）。
+    pub fn set_usable(&self, usable: u32) {
+        self.usable.store(usable.max(1), Ordering::SeqCst);
     }
 
     pub fn flush_reserve(&self) -> u32 {
@@ -306,21 +314,16 @@ impl Slots {
 
     /// 尝试占用一个普通 I/O 槽位；满了就等到 deadline，仍无空位则返回
     /// `Retryable(Backpressure)`——不会静默丢掉这次操作，也不会自动重试。
-    pub fn acquire_ordinary(&self) -> Result<SlotGuard<'_>, KernelError> {
-        self.acquire(&self.ordinary, self.usable, false)
+    pub fn acquire_ordinary(&self) -> Result<SlotGuard, KernelError> {
+        self.acquire(&self.ordinary, self.usable())
     }
 
     /// flush 走独立额度，普通 I/O 打满时它仍能拿到槽位（§4.6）。
-    pub fn acquire_flush(&self) -> Result<SlotGuard<'_>, KernelError> {
-        self.acquire(&self.flush, self.reserve, true)
+    pub fn acquire_flush(&self) -> Result<SlotGuard, KernelError> {
+        self.acquire(&self.flush, self.reserve)
     }
 
-    fn acquire<'a>(
-        &'a self,
-        counter: &'a AtomicU64,
-        limit: u32,
-        _flush: bool,
-    ) -> Result<SlotGuard<'a>, KernelError> {
+    fn acquire(&self, counter: &Arc<AtomicU64>, limit: u32) -> Result<SlotGuard, KernelError> {
         let start = self.clock.monotonic_nanos();
         loop {
             let cur = counter.load(Ordering::SeqCst);
@@ -329,7 +332,9 @@ impl Slots {
                     .compare_exchange(cur, cur + 1, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
                 {
-                    return Ok(SlotGuard { counter });
+                    return Ok(SlotGuard {
+                        counter: Arc::clone(counter),
+                    });
                 }
                 continue;
             }
@@ -342,11 +347,22 @@ impl Slots {
 }
 
 /// 槽位占用凭据：`Drop` 即归还，因此 panic 展开路径也不会泄漏额度。
-pub struct SlotGuard<'a> {
-    counter: &'a AtomicU64,
+/// 显式 [`SlotGuard::release`] 也能归还，供持有它的容器（如 reactor 队列）在丢弃前使用。
+///
+/// `Arc<Slots>` 保证凭据活着时额度本身还在——没有生命周期参数，
+/// 它才能随操作一起跨线程移动（reactor 在另一边归还）。
+pub struct SlotGuard {
+    counter: Arc<AtomicU64>,
 }
 
-impl Drop for SlotGuard<'_> {
+impl SlotGuard {
+    /// 归还槽位（幂等：第二次调用不会把计数减成负数）。
+    pub fn release(self) {
+        drop(self);
+    }
+}
+
+impl Drop for SlotGuard {
     fn drop(&mut self) {
         self.counter.fetch_sub(1, Ordering::SeqCst);
     }
@@ -528,7 +544,7 @@ mod tests {
     fn backpressure_is_retryable_and_never_silently_truncates() {
         let qd = QueueDepth::new(4, 2, 2).expect("valid");
         let clock = Arc::new(ManualClock::new(0));
-        let slots = Slots::new(&qd, 0, Box::new(SharedClock(clock.clone())));
+        let slots = Slots::new(&qd, 0, Arc::new(SharedClock(clock.clone())));
         let a = slots.acquire_ordinary().expect("first");
         let b = slots.acquire_ordinary().expect("second");
         // deadline 为 0：满额后立即超时，返回 `Retryable(Backpressure)`（HRM7）。
@@ -548,7 +564,7 @@ mod tests {
     fn flush_is_never_starved_by_ordinary_io() {
         let qd = QueueDepth::new(8, 4, 1).expect("valid");
         let clock = Arc::new(ManualClock::new(0));
-        let slots = Slots::new(&qd, 0, Box::new(SharedClock(clock)));
+        let slots = Slots::new(&qd, 0, Arc::new(SharedClock(clock)));
         let mut held = Vec::new();
         for _ in 0..4 {
             held.push(slots.acquire_ordinary().expect("ordinary slot"));

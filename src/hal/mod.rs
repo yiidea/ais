@@ -15,11 +15,13 @@ pub mod executor;
 pub mod file;
 pub mod mem;
 pub mod qd;
+pub mod reactor;
 
 pub use executor::SyncIoExecutor;
 pub use file::FileDevice;
 pub use mem::MemDevice;
 pub use qd::{IoPath, QdConfig, QdDecision, QdSample, QdTuner, QueueDepth, SlotGuard, Slots};
+pub use reactor::{ReactorIoExecutor, WindowSample};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 

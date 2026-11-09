@@ -52,8 +52,9 @@ const DEFAULT_BACKPRESSURE_DEADLINE_NANOS: u64 = 10_000_000;
 
 /// 同步 façade：持有 `Box<dyn StorageDevice>`（04 §6.3 I5）。
 pub struct SyncIoExecutor {
-    device: Box<dyn StorageDevice>,
-    slots: Slots,
+    /// 与 [`super::ReactorIoExecutor`] 共享同一个设备（两种 façade 不能各拿一份盒子）。
+    device: Arc<dyn StorageDevice>,
+    slots: Arc<Slots>,
 }
 
 impl SyncIoExecutor {
@@ -74,8 +75,12 @@ impl SyncIoExecutor {
         deadline_nanos: u64,
     ) -> Self {
         SyncIoExecutor {
-            device,
-            slots: Slots::new(qd, deadline_nanos, Box::new(DefaultClock::default())),
+            device: Arc::from(device),
+            slots: Arc::new(Slots::new(
+                qd,
+                deadline_nanos,
+                Arc::new(DefaultClock::default()),
+            )),
         }
     }
 
@@ -83,8 +88,13 @@ impl SyncIoExecutor {
         self.device.as_ref()
     }
 
+    /// 设备句柄（交给另一个 façade 共用同一块盘）。
+    pub fn device_shared(&self) -> Arc<dyn StorageDevice> {
+        Arc::clone(&self.device)
+    }
+
     /// 当前生效的普通读写在上限与 flush 预留（诊断用）。
-    pub fn slots(&self) -> &Slots {
+    pub fn slots(&self) -> &Arc<Slots> {
         &self.slots
     }
 }

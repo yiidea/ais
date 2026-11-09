@@ -10,13 +10,17 @@ use crate::clock::{Clock, SystemClock};
 use crate::error::{
     ConflictKind, CorruptionKind, IdKind, InternalCode, KernelError, KernelResult, ResourceType,
 };
-use crate::hal::{DeviceOp, DeviceSite, IoExecutor, StorageDevice, SyncIoExecutor};
+use crate::hal::qd::QueueDepth;
+use crate::hal::{
+    DeviceOp, DeviceSite, IoExecutor, ReactorIoExecutor, StorageDevice, SyncIoExecutor,
+};
 use crate::types::*;
 use crate::wal::{DeviceWal, DeviceWalConfig, WalBody, WalManager};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub mod checkpoint;
 pub mod feed;
@@ -240,6 +244,32 @@ pub struct KernelConfig {
     /// 检查点影子文件路径。
     pub checkpoint_path: PathBuf,
     pub clock: Arc<dyn Clock>,
+    /// 用常驻 reactor 执行设备操作（04 §6.3 I1）。`None` = 同步 façade。
+    ///
+    /// 同步 façade 同一时刻至多一个在飞操作，QD 上限与背压在它上面不会生效；
+    /// 要真正吃到并发与队列深度，就必须挂 reactor（[`ReactorIoExecutor`]）。
+    pub reactor: Option<ReactorSpec>,
+}
+
+/// reactor 的构造参数（07 §4）。QD 由 [`QueueDepth`] 推导，不在这里直接给数。
+#[derive(Clone, Debug)]
+pub struct ReactorSpec {
+    pub qd: QueueDepth,
+    /// 该设备的延迟 SLO（纳秒），§4.3 的 `lat_p99 ≤ 0.8 × SLO` 用它。
+    pub slo_nanos: u64,
+    /// 监控窗口长度；QD 自适应与 `io.qd.adjustments` 都按窗口计。
+    pub window: Duration,
+}
+
+impl ReactorSpec {
+    /// 默认窗口 100ms、SLO 100µs——都是部署参数，按 B3 实测再调。
+    pub fn new(qd: QueueDepth) -> Self {
+        ReactorSpec {
+            qd,
+            slo_nanos: 100_000,
+            window: Duration::from_millis(100),
+        }
+    }
 }
 
 impl KernelConfig {
@@ -256,6 +286,7 @@ impl KernelConfig {
             payload_base_offset: wal_base_offset + wal_segment_size * wal_segment_count,
             checkpoint_path: checkpoint_path.into(),
             clock: Arc::new(SystemClock::new()),
+            reactor: None,
         }
     }
 
@@ -285,7 +316,19 @@ pub struct Kernel {
 
 impl Kernel {
     pub fn open(config: KernelConfig, device: Box<dyn StorageDevice>) -> KernelResult<Self> {
-        Self::open_with_io(config, Arc::new(SyncIoExecutor::new(device)))
+        match &config.reactor {
+            None => Self::open_with_io(config, Arc::new(SyncIoExecutor::new(device))),
+            Some(spec) => {
+                let io = Arc::new(ReactorIoExecutor::new(
+                    Arc::from(device),
+                    &spec.qd,
+                    Arc::clone(&config.clock),
+                    spec.slo_nanos,
+                    spec.window,
+                ));
+                Self::open_with_io(config, io)
+            }
+        }
     }
 
     /// 用外部提供的 `IoExecutor` 打开内核。
