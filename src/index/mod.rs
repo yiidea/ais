@@ -27,14 +27,20 @@
 
 pub mod builder;
 pub mod catchup;
+pub mod freshness;
 pub mod kind;
 pub mod manifest;
 pub mod reclaim;
 pub mod segment;
+pub mod tracker;
 
 pub use builder::{build_segment, SealError, SealedSegment};
 pub use catchup::{step, CatchUpStep, RebuildRequired};
+pub use freshness::{
+    next_txn_watermark, ChangeRate, CostModel, FallbackCost, FallbackStrategy, IndexFreshness,
+};
 pub use kind::{EntryAction, EntryKey, EntryKind, IndexKind, MetaIndex, ObjectView, OwnedView};
 pub use manifest::{Advance, CasConflict, PublishedSegment, SegmentId, SegmentManifest};
 pub use reclaim::{reclaimable, Blocker, ReclaimVerdict};
 pub use segment::{IndexEntry, Segment};
+pub use tracker::{catch_up, CatchUpLimits, MaintenanceHost, MaintenanceReport};

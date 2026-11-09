@@ -7,10 +7,15 @@
 pub mod intent;
 pub mod vector;
 
+use crate::error::InternalCode;
 use crate::error::{CorruptionKind, IdKind, KernelError, KernelResult};
+use crate::index::{
+    CatchUpLimits, ChangeRate, CostModel, FallbackStrategy, IndexFreshness, IndexKind,
+    MaintenanceHost, MetaIndex, SegmentManifest,
+};
 use crate::kernel::{
-    CreateObjectRequest, Kernel, KernelConfig, ObjectManager, TransactionManager, TxnCtx,
-    VersionSpec,
+    ChangeBatchSpec, ChangeFeed, CreateObjectRequest, Kernel, KernelConfig, ObjectManager,
+    TransactionManager, TxnCtx, VersionSpec,
 };
 use crate::types::*;
 use std::collections::BTreeMap;
@@ -82,12 +87,56 @@ impl DocumentPayload {
     }
 }
 
+/// 查询结果的完整性标记（06 §4.3）：索引不覆盖这个快照时必须显式暴露。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IndexCoverage {
+    /// 快照内的全部写入都已进索引，结果完整。
+    Complete,
+    /// 结果经回退补齐后完整（仅限候选集是超集的回退策略）。
+    Recovered { via: FallbackStrategy },
+    /// 结果部分且未能补齐——`missing_estimate` 是估计值，不是上界。
+    Partial { missing_estimate: u64 },
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SearchResult {
+    pub hits: Vec<SearchHit>,
+    pub coverage: Option<IndexCoverage>,
+}
+
+impl SearchResult {
+    /// 结果是否完整（`None` = 引擎没有开启索引，不做覆盖声明）。
+    pub fn is_complete(&self) -> bool {
+        !matches!(self.coverage, Some(IndexCoverage::Partial { .. }))
+    }
+}
+
 pub struct Engine {
     pub(crate) kernel: Kernel,
     pub(crate) vectors: Mutex<VectorIndex>,
     pub(crate) docs: Mutex<BTreeMap<ObjectId, DocumentPayload>>,
     pub(crate) versions: Mutex<BTreeMap<ObjectId, VersionId>>,
+    /// 开了索引时：追赶进度（06 §3）与字节→条数估计样本。
+    pub(crate) index: Option<Mutex<IndexState>>,
 }
+
+/// 引擎内索引的追赶状态。
+pub(crate) struct IndexState {
+    kind: Box<dyn IndexKind>,
+    manifest: SegmentManifest,
+    rate: ChangeRate,
+    model: CostModel,
+}
+
+/// 代价模型系数（微秒）。这些都是 B7 的实测来源，默认值只是让引擎开箱可用，
+/// 部署时必须按设备实测替换（07 §2.7）。
+pub const DEFAULT_COST_MODEL: CostModel = CostModel {
+    c_scan_nanos: 2_000,
+    c_point_nanos: 500,
+    filter_eval_nanos: 100,
+    safety_factor_num: 3,
+    safety_factor_den: 2,
+};
 
 impl Engine {
     /// 打开引擎并重建派生索引（向量索引与文档缓存）。
@@ -101,9 +150,87 @@ impl Engine {
             vectors: Mutex::new(VectorIndex::new()),
             docs: Mutex::new(BTreeMap::new()),
             versions: Mutex::new(BTreeMap::new()),
+            index: None,
         };
         engine.rebuild_indexes()?;
         Ok(engine)
+    }
+
+    /// 开启索引（`MetaIndex` 按对象类型分桶，06 §3 的追赶与覆盖判定）。
+    ///
+    /// 开启后 `search_with_coverage` 会先追赶、再按快照报覆盖；不开启时引擎不做
+    /// 任何覆盖声明（`coverage = None`）。
+    pub fn with_index(mut self, id: IndexId) -> KernelResult<Self> {
+        let state = IndexState {
+            kind: Box::new(MetaIndex::new(id)),
+            manifest: SegmentManifest::empty(id),
+            rate: ChangeRate::default(),
+            model: DEFAULT_COST_MODEL,
+        };
+        self.index = Some(Mutex::new(state));
+        self.catch_up_index()?;
+        Ok(self)
+    }
+
+    /// 把索引追到当前 `object_watermark`（同步调用，06 §6.2 的 `fallback_full_scan`
+    /// 即在本函数返回后执行）。
+    pub fn catch_up_index(&self) -> KernelResult<Option<IndexFreshness>> {
+        let Some(state) = &self.index else {
+            return Ok(None);
+        };
+        let mut state = state.lock().unwrap();
+        let IndexState {
+            kind,
+            manifest,
+            rate,
+            ..
+        } = &mut *state;
+        let report = crate::index::catch_up(
+            kind.as_ref(),
+            &self.kernel as &dyn MaintenanceHost,
+            self.kernel.wal(),
+            manifest,
+            &ChangeBatchSpec::unbounded(),
+            CatchUpLimits::to_watermark(),
+            rate,
+        )
+        .map_err(|e| {
+            KernelError::internal(
+                InternalCode::InvariantViolation,
+                format!("index catch-up: {e:?}"),
+            )
+        })?;
+        if let Some(reason) = report.rebuild_required {
+            // A9：水位没动，必须显式要求全量重建，而不是把「没追」当「追完了」。
+            return Err(KernelError::internal(
+                InternalCode::InvariantViolation,
+                format!("index requires rebuild: {reason}"),
+            ));
+        }
+        let snap = self.kernel.fresh_snapshot();
+        let model = state.model;
+        let rate = state.rate;
+        Ok(Some(IndexFreshness::evaluate(
+            &state.manifest,
+            &snap,
+            self.kernel.object_watermark(),
+            &rate,
+            &model,
+        )))
+    }
+
+    /// 当前索引的新鲜度；没开索引时为 `None`。
+    pub fn index_freshness(&self) -> Option<IndexFreshness> {
+        let state = self.index.as_ref()?;
+        let state = state.lock().unwrap();
+        let snap = self.kernel.fresh_snapshot();
+        Some(IndexFreshness::evaluate(
+            &state.manifest,
+            &snap,
+            self.kernel.object_watermark(),
+            &state.rate,
+            &state.model,
+        ))
     }
 
     pub fn kernel(&self) -> &Kernel {
@@ -167,6 +294,7 @@ impl Engine {
             .upsert(id, payload.embedding.clone());
         self.docs.lock().unwrap().insert(id, payload);
         self.versions.lock().unwrap().insert(id, txn_version(&txn));
+        self.index_after_write();
         Ok(id)
     }
 
@@ -203,6 +331,7 @@ impl Engine {
             .upsert(id, payload.embedding.clone());
         self.docs.lock().unwrap().insert(id, payload);
         self.versions.lock().unwrap().insert(id, ver);
+        self.index_after_write();
         Ok(ver)
     }
 
@@ -219,7 +348,16 @@ impl Engine {
         self.vectors.lock().unwrap().remove(id);
         self.docs.lock().unwrap().remove(&id);
         self.versions.lock().unwrap().remove(&id);
+        self.index_after_write();
         Ok(())
+    }
+
+    /// 写入之后的追赶：把新提交的变更发布出去。
+    ///
+    /// 失败不影响写入结果——索引是派生数据，写已经提交；缺口会在下一次
+    /// `catch_up_index` 或查询前的追赶里补上，覆盖判定会如实报滞后。
+    fn index_after_write(&self) {
+        let _ = self.catch_up_index();
     }
 
     pub fn get_document(&self, id: ObjectId) -> KernelResult<DocumentPayload> {
@@ -234,9 +372,21 @@ impl Engine {
     }
 
     pub fn search(&self, query: &[f32], k: usize) -> Vec<SearchHit> {
+        self.search_with_coverage(query, k).hits
+    }
+
+    /// 同 [`search`](Self::search)，但附带完整性标记（06 §4.3）。
+    ///
+    /// 开索引时先追赶，再按**查询快照**判覆盖：
+    /// - 覆盖 → `Complete`，结果就是全部答案；
+    /// - 不覆盖 → 候选集来自向量索引对文档缓存的暴力扫描，它是**超集**，因此先补扫
+    ///   缺口再回答（策略 A，`Recovered`）；补不上（追赶失败）时显式报 `Partial`，
+    ///   给出缺口估计，不把旧结果当最新结果静默返回。
+    pub fn search_with_coverage(&self, query: &[f32], k: usize) -> SearchResult {
+        let coverage = self.coverage_for_query();
         let scored = self.vectors.lock().unwrap().search(query, k);
         let docs = self.docs.lock().unwrap();
-        scored
+        let hits = scored
             .into_iter()
             .filter_map(|(id, score)| {
                 docs.get(&id).map(|d| SearchHit {
@@ -246,7 +396,35 @@ impl Engine {
                     metadata: d.metadata.clone(),
                 })
             })
-            .collect()
+            .collect();
+        SearchResult { hits, coverage }
+    }
+
+    fn coverage_for_query(&self) -> Option<IndexCoverage> {
+        let before = self.index_freshness()?;
+        // 覆盖判定按**本次查询的快照**（06 §3.1 的精确形式）：
+        // `完整 ⟺ 快照可见版本的 created_by_xid 都已在索引里`。而快照可见版本的
+        // `created_by_xid < S.xmax`，所以 `tx_w ≥ S.xmax − 1` 即完整；`snap.xmin`
+        // 是「活跃事务里最小的 xid」，用它会把**之后的**事务也算进缺口。
+        let snap = self.kernel.fresh_snapshot();
+        let complete = |fw: &IndexFreshness| fw.txn_watermark.0.saturating_add(1) >= snap.xmax.0;
+        if complete(&before) {
+            return Some(IndexCoverage::Complete);
+        }
+        match self.catch_up_index() {
+            Ok(Some(after)) if complete(&after) => Some(IndexCoverage::Recovered {
+                via: FallbackStrategy::FullScan,
+            }),
+            Ok(Some(after)) => Some(IndexCoverage::Partial {
+                missing_estimate: after
+                    .estimated_lag_objects
+                    .or(before.estimated_lag_objects)
+                    .unwrap_or(1),
+            }),
+            _ => Some(IndexCoverage::Partial {
+                missing_estimate: before.estimated_lag_objects.unwrap_or(1),
+            }),
+        }
     }
 
     pub fn execute(&self, req: IntentRequest) -> KernelResult<IntentResponse> {

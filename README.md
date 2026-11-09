@@ -161,8 +161,8 @@ Physical Block（硬件访问单元：4K / 64K / GPU 传输粒度）
 零外部依赖、可直接运行（需要 Rust 1.75+，离线可构建）：
 
 ```bash
-cargo test                       # 104 项：内核契约、变更流、派生记录、存活快照、资源类型、平台核对、索引层、队列深度与背压、reactor
-cargo test --features test-harness   # +10 项掉电注入下的崩溃恢复（共 114）
+cargo test                       # 112 项：内核契约、变更流、派生记录、存活快照、资源类型、平台核对、索引层、队列深度与背压、reactor
+cargo test --features test-harness   # +10 项掉电注入下的崩溃恢复（共 122）
 cargo run --example quickstart   # 下面这段代码，可直接运行
 cargo run --bin ains-demo        # 写入 → 向量检索 → Intent 管线 → 删除 → 检查点 → 重启恢复
 ```
@@ -225,13 +225,14 @@ Rust MVP 已实现并全部测试通过：
 - `src/kernel/live`：F17 `LiveSnapshotSource`（存活快照集合 + 逐条目可见性，复用内核唯一的 `version_visible`），索引段回收器 G3/G4 的唯一输入；
 - `src/hal/qd`：队列深度与背压（07 §4，HRM7）——`QueueDepth` 按 `qd_effective = min(设备上限, qd_usable + qd_flush_reserve)` 推导并在启动期拒绝 `qd_flush_reserve = 0` 或预算超发；`Slots` 给普通 I/O 与 flush 两套互不共享的额度，满了等到 deadline 即返回 `Retryable(Backpressure)`（不静默截断、不缩小 batch、不自动重试），`SyncIoExecutor` 每次提交都先过槽位；`QdTuner` 实现 §4.3–§4.4 的升/降/不动三条与迟滞冷却，阈值全部相对 `qd_usable` 而非含预留的 `qd_effective`；
 - `src/hal/reactor`：常驻 reactor 线程上的 `IoExecutor`（04 §6.3 I1 / 07 §4）——调用方线程先在 `Slots` 上占额度、满了立即 `Retryable(Backpressure)`，再把操作交给 reactor 并阻塞等结果，在飞操作数因此能超过 1 且始终受 `qd_usable` 约束；reactor 按窗口采样 `lat_p50`/`lat_p99` 与在飞峰值（饱和视作 `util`），驱动 `QdTuner` 调整普通槽位数并用 `Slots::set_usable` 生效；`KernelConfig::reactor`（`ReactorSpec`）启用，缺省仍是 `SyncIoExecutor`；
+- `src/index` 的追赶与新鲜度：`freshness` 把索引水位暴露成连续量（`IndexFreshness`：覆盖判定只读快照 `xmin` 与 xid 水位，A1/A3/A4；代价模型里「字节缺口 → 变更条数」只按本进程实测比例折算，没有样本就返回 `None`，不拿常数冒充测量值），`tracker::catch_up` 是「拉批 → 建段 → 记证据 → 发布 → CAS 推进水位」的循环，屏障停在未决事务之前且不丢已提交变更、截断区间返回 `RebuildRequired` 且不动水位（A9/A10）；`Engine::with_index` 打开索引后，`search_with_coverage` 在回答前追赶并按查询快照给出 `Complete` / `Recovered` / `Partial`，不再把旧结果当最新结果；
 - `src/platform`：启动期平台核对（07 §1.2 / §5）——部署声明与设备自报的耐久等级、对齐、discard 能力逐台比对，能力不足直接拒绝启动，降级写进 `PlatformReport` 交给运维；`select_backend` 按 §5.3 决策表在启动期定下 io_uring / SPDK / POSIX，`check_direct_io` 执行 §5.4 的对齐规则（未对齐返 `InvalidArgument`，不静默降级）；核对失败时内核根本不会被打开；
 - `src/index`：索引层（08 §2 的五个部件，内核之外的调用方）——`segment` 定义自校验段格式（段头 + 逐条目 CRC32C），`manifest` 以 `Advance` 票据在类型层面保证「先发布段、再推进水位」且水位单调、CAS 单写者，`catchup` 消费 F16 并对历史截断显式返回 `RebuildRequired`，`builder` 按 06 §2.3 动作表产段并经 `append_derived` 记录发布，`reclaim` 按 ADR-0015 的 G1–G6 判定（读失败按可见处理，保守保留）；
 - `src/engine`：Document 载荷、暴力向量检索、Intent 管线；
 - `src/testing`（feature `test-harness`）：故障注入设备与确定性注入器，验证崩溃恢复契约；
 - `examples/quickstart`：README §6 的代码，作为编译检查长期存在。
 
-验证方式：`cargo test`（104 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
+验证方式：`cargo test`（112 项）、`cargo test --features test-harness`（+10 项崩溃恢复）、`cargo run --bin ains-demo`。
 
 CI（`.github/workflows/ci.yml`）对每个 PR 跑这些任务：`rustfmt`、`clippy`（默认与 `--all-features` 两种组合，`-D warnings`）、`test` 矩阵（默认 / 全特性）、`rustdoc`（`-D warnings`，文档链接必须能解析）、`offline build`（守住零外部依赖）、`demo`（demo 与 quickstart 必须真的跑起来）、`msrv`（1.75 编译 + 测试）。
 
@@ -253,7 +254,7 @@ CI（`.github/workflows/ci.yml`）对每个 PR 跑这些任务：`rustfmt`、`cl
 
 下一步（按依赖顺序）：
 
-1. **读路径的索引可见性水位**：`engine.search` 目前直接扫描已提交对象；接上索引后必须暴露「索引已追到哪」，滞后时按 06 §3.2 选择回退策略，而不是把旧结果当最新结果。
+1. **索引追赶的后台化与持久化**：`catch_up` 已能把引擎的索引追平并在查询前补扫，但协调区 `SegmentManifest` 只住在进程内存里、追赶发生在调用线程上；接下来要把协调区按 ADR-0013 写进 WAL（并接上 0x31 的交叉核对），把追赶交给后台线程，再用 07 的 `ReactorSpec`/QD 给它排队。
 2. **io_uring / SPDK 后端**：`StorageDevice` 已冻结、`FileDevice` 已是 POSIX 实现，选路与对齐判据已落在 `src/platform`（07 §5），缺的是真实后端实现与 B5 压测数据。
 3. **组提交与写路径并发**：MVP 用一把 writer 锁串行化写；改为每对象写意向锁 + WAL 组提交（03 §2.5）。
 4. 第一版不实现：分布式事务、完整 GPU 后端、CXL、RDMA、自研模型——但接口已预留。

@@ -590,7 +590,10 @@ impl Kernel {
         let st = self.state.lock().unwrap();
         let active = self.active.lock().unwrap().clone();
         let xmax = st.xmax.max(1);
-        let xmin = active.iter().map(|x| x.0).min().unwrap_or(xmax).min(xmax);
+        // 快照成立时仍在运行的事务都不可见，因此 `xmin` 必须退到它们之中最小的一个。
+        // 没有活跃事务时 `xmin = xmax`：`xmax` 只推进到**已开始**的事务之后，所以
+        // 「`xid < xmin` 的事务都已判定」在两种情形下都成立（06 §3.1）。
+        let xmin = active.iter().map(|x| x.0).min().unwrap_or(xmax);
         Snapshot {
             id: SnapshotId(self.next_snapshot.fetch_add(1, Ordering::SeqCst)),
             xmin: TransactionId(xmin),
@@ -631,6 +634,9 @@ impl TransactionManager for Kernel {
             });
         }
         let mut st = self.state.lock().unwrap();
+        // 分配即推进：下一个 xid 绝不能落在本事务的快照 `xmax` 之前。否则一个
+        // 「分配了 xid 却没走到 begin 结尾」的事务会被后续快照声明为「已判定」，
+        // 而它永不出现在变更流里，索引的覆盖判定（06 §3.1）随之失去保证。
         let xid = TransactionId(st.xmax.max(1));
         st.xmax = xid.0 + 1;
         st.txn_status.insert(xid, TxnStatus::Running);
