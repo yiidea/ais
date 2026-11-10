@@ -342,3 +342,90 @@ fn append_derived_helper_refuses_transactional_bodies() {
         delta
     );
 }
+
+/// `Arc` 共享介质：同一份字节上「重启」出新内核。
+struct SharedMedium(std::sync::Arc<MemDevice>);
+
+impl StorageDevice for SharedMedium {
+    fn descriptor(&self) -> &ains::hal::DeviceDescriptor {
+        self.0.descriptor()
+    }
+    fn write<'a>(
+        &'a self,
+        loc: &'a PhysicalLocation,
+        buf: &'a [u8],
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.write(loc, buf)
+    }
+    fn read<'a>(
+        &'a self,
+        loc: &'a PhysicalLocation,
+        buf: &'a mut [u8],
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.read(loc, buf)
+    }
+    fn flush<'a>(
+        &'a self,
+        loc: &'a PhysicalLocation,
+        level: DurabilityLevel,
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.flush(loc, level)
+    }
+    fn discard<'a>(
+        &'a self,
+        loc: &'a PhysicalLocation,
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.discard(loc)
+    }
+    fn max_durability(&self) -> DurabilityLevel {
+        self.0.max_durability()
+    }
+    fn health(&self) -> DeviceHealth {
+        self.0.health()
+    }
+}
+
+#[test]
+fn derived_records_survive_a_restart() {
+    // 重启后盘上已有的记录必须重新可读：`durable_lsn` 在「本进程没 flush 过」时
+    // 取日志尾，而不是打开时的初始值 0——否则派生记录永远读不回来。
+    let medium = std::sync::Arc::new(MemDevice::new(DeviceId(1), 16 << 20));
+    let dir = std::env::temp_dir().join("ains-derived-restart");
+    let _ = std::fs::remove_dir_all(&dir);
+    let cfg = || KernelConfig::new(dir.join("ckpt.snap"));
+
+    let lsn = {
+        let k = Kernel::open(cfg(), Box::new(SharedMedium(medium.clone()))).expect("open");
+        let delta = WalBody::IndexDelta {
+            index_id: IndexId(5),
+            object_id: ObjectId::new(1, 1),
+            version: VersionId(1),
+            op: 0,
+        };
+        let lsn = k
+            .wal()
+            .append_derived(
+                &derived(RecordType::IndexDelta, &delta),
+                DerivedFamily::Index,
+            )
+            .expect("append");
+        k.wal().flush_upto(lsn).expect("flush");
+        lsn
+    };
+
+    let k = Kernel::open(cfg(), Box::new(SharedMedium(medium))).expect("reopen");
+    // 重启后的第一次扫描只到「已持久」水位为止：没修正的话它是打开时的初始值，
+    // 结果是一条记录都读不到。
+    let scan = k.wal().scan_from(Lsn(0)).expect("scan");
+    assert!(
+        scan.last_valid_lsn > lsn,
+        "重启后的扫描要覆盖盘上已有的记录"
+    );
+    assert!(k.wal().durable_lsn() >= lsn, "盘上已有的记录是持久的");
+    assert!(
+        scan.records
+            .iter()
+            .any(|r| r.lsn == lsn && r.record.record_type == RecordType::IndexDelta),
+        "重启后派生记录仍在"
+    );
+}

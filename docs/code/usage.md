@@ -226,8 +226,8 @@ assert_eq!(l1::digest(&bytes), l1::digest(b"committed-before-crash"));
 ## 6. 测试命令
 
 ```bash
-cargo test                                   # 默认特性（112 项）
-cargo test --all-features                    # 含 test-harness（122 项）
+cargo test                                   # 默认特性（121 项）
+cargo test --all-features                    # 含 test-harness（131 项）
 cargo clippy --all-targets --all-features -- -D warnings
 cargo fmt --check
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
@@ -248,10 +248,11 @@ CI 由 `.github/workflows/ci.yml` 的 8 个任务覆盖以上全部，全局 `RU
 1. **单机、单进程。** 没有集群、没有复制、没有跨节点事务。`Deployment::fabric_lanes`
    只是声明字段，不参与任何行为。
 2. **派生索引每次打开都全量重建。** 向量索引与文档缓存不落盘；`Engine::open` 的
-   成本与对象总数成正比。段索引（`IndexState`）也只在内存里，`with_index` 每次从空
-   清单开始追赶。
-3. **索引追赶是同步的，且没有后台化 / 持久化。** `catch_up_index` 会挡住调用方；
-   进程重启后清单丢失，重新追。这是 README「下一步」第 1 项。
+   成本与对象总数成正比。**例外**是索引协调区：它按 ADR-0013 写进 WAL
+   （`manifest_log`），`with_index` 时从最新一条记录还原两个水位，重启后接着追而不是从零追。
+   但引擎不落盘段文件本身，内存里的段在重启后不还原。
+3. **索引追赶是同步的，且没有后台化。** `catch_up_index` 会挡住调用方；清单虽然
+   持久化了，追赶本身仍在调用线程上跑。后台化是 README「下一步」第 1 项的剩余部分。
 4. **未决事务会让水位停住。** 覆盖判定按 xid，长事务会让 `txn_watermark` 卡在它之前
    （A10：水位不越过未决事务）。同时要知道：`next_txn_watermark` 在「没有未决事务」
    时取已见最大 xid，这是**下界**——内核没有枚举未决事务的接口，所以这个值偏保守，

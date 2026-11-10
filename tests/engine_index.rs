@@ -5,9 +5,10 @@ use ains::engine::{Engine, IndexCoverage};
 use ains::hal::mem::MemDevice;
 use ains::hal::StorageDevice;
 use ains::index::FallbackStrategy;
-use ains::kernel::{KernelConfig, TransactionManager, TxnCtx};
+use ains::kernel::{Kernel, KernelConfig, TransactionManager, TxnCtx};
 use ains::types::*;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 fn engine(tag: &str) -> Engine {
     let dir = std::env::temp_dir().join(format!("ains-engine-index-{tag}"));
@@ -23,6 +24,48 @@ fn put(engine: &Engine, text: &str, embedding: Vec<f32>) -> ObjectId {
     engine
         .put_document(ObjectType::Document, text, embedding, BTreeMap::new())
         .unwrap()
+}
+
+/// `Arc` 共享介质，每次「重启」交给新的 `Engine` 一个句柄（同一份字节）。
+struct SharedMedium(Arc<MemDevice>);
+
+impl StorageDevice for SharedMedium {
+    fn descriptor(&self) -> &ains::hal::DeviceDescriptor {
+        self.0.descriptor()
+    }
+    fn write<'a>(
+        &'a self,
+        loc: &'a ains::types::PhysicalLocation,
+        data: &'a [u8],
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.write(loc, data)
+    }
+    fn read<'a>(
+        &'a self,
+        loc: &'a ains::types::PhysicalLocation,
+        buf: &'a mut [u8],
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.read(loc, buf)
+    }
+    fn flush<'a>(
+        &'a self,
+        loc: &'a ains::types::PhysicalLocation,
+        level: DurabilityLevel,
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.flush(loc, level)
+    }
+    fn discard<'a>(
+        &'a self,
+        loc: &'a ains::types::PhysicalLocation,
+    ) -> ains::hal::BoxFuture<'a, ains::KernelResult<()>> {
+        self.0.discard(loc)
+    }
+    fn max_durability(&self) -> DurabilityLevel {
+        self.0.max_durability()
+    }
+    fn health(&self) -> DeviceHealth {
+        self.0.health()
+    }
 }
 
 #[test]
@@ -95,4 +138,34 @@ fn lagging_index_is_recovered_by_catching_up_before_answering() {
         after.txn_watermark,
         TransactionId(stale.txn_watermark.0 + 1)
     );
+}
+
+#[test]
+fn reopening_the_kernel_reads_back_the_persisted_manifest() {
+    let dir = std::env::temp_dir().join("ains-engine-index-reopen");
+    let _ = std::fs::remove_dir_all(&dir);
+    let medium = Arc::new(MemDevice::new(DeviceId(1), 16 << 20));
+    let cfg = || KernelConfig::new(dir.join("ckpt.snap"));
+
+    let (advanced, wal_end) = {
+        let e = Engine::open(cfg(), Box::new(SharedMedium(Arc::clone(&medium))))
+            .unwrap()
+            .with_index(IndexId(1))
+            .unwrap();
+        put(&e, "a", vec![1.0, 0.0]);
+        put(&e, "b", vec![0.0, 1.0]);
+        e.catch_up_index().unwrap();
+        e.kernel().wal().flush_upto(Lsn(u64::MAX)).unwrap();
+        (e.index_freshness().unwrap(), e.kernel().wal().durable_lsn())
+    };
+
+    // 重启：新内核从同一份介质打开 WAL，协调区从最新一条记录还原。
+    // 记录里是「推进前」的水位，进程内最终值是「推进后」的。
+    let k = Kernel::open(cfg(), Box::new(SharedMedium(Arc::clone(&medium)))).unwrap();
+    let restored = ains::index::manifest_log::restore(k.wal(), IndexId(1))
+        .unwrap()
+        .expect("manifest record persisted");
+    assert!(restored.watermark <= wal_end);
+    assert!(restored.watermark <= advanced.lsn_watermark);
+    assert!(restored.txn_watermark.0 + 2 >= advanced.txn_watermark.0);
 }

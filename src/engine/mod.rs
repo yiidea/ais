@@ -161,9 +161,19 @@ impl Engine {
     /// 开启后 `search_with_coverage` 会先追赶、再按快照报覆盖；不开启时引擎不做
     /// 任何覆盖声明（`coverage = None`）。
     pub fn with_index(mut self, id: IndexId) -> KernelResult<Self> {
+        // 协调区从 WAL 还原（ADR-0013）：重启后不必从头重追。记录已被截断时
+        // 还原不到，从空清单开始——追到 `min_required_lsn` 之前会显式要求重建。
+        let manifest = crate::index::manifest_log::restore(self.kernel.wal(), id)
+            .map_err(|e| {
+                KernelError::internal(
+                    InternalCode::InvariantViolation,
+                    format!("index manifest restore: {e}"),
+                )
+            })?
+            .unwrap_or_else(|| SegmentManifest::empty(id));
         let state = IndexState {
             kind: Box::new(MetaIndex::new(id)),
-            manifest: SegmentManifest::empty(id),
+            manifest,
             rate: ChangeRate::default(),
             model: DEFAULT_COST_MODEL,
         };
@@ -200,6 +210,13 @@ impl Engine {
                 format!("index catch-up: {e:?}"),
             )
         })?;
+        // 协调区记录只追加、不 fsync；在这里刷一次，让它成为可还原的水位
+        // （ADR-0013：索引水位在重启后必须能接着用，而不是从零重追）。
+        if report.advanced_to > Lsn(0) {
+            self.kernel
+                .wal()
+                .flush_upto(self.kernel.wal().durable_lsn())?;
+        }
         if let Some(reason) = report.rebuild_required {
             // A9：水位没动，必须显式要求全量重建，而不是把「没追」当「追完了」。
             return Err(KernelError::internal(

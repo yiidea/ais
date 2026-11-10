@@ -5,10 +5,13 @@
 //! ```text
 //! 1. catchup::step      拉一批已提交变更（撞上未决事务就停）
 //! 2. build_segment      把这一批构建成段（幂等键由内容算出）
-//! 3. record_manifest    写 0x31 —— 证据，不是发布（ADR-0013 决策 3）
-//! 4. manifest.publish   段进清单，拿到 Advance 票据
-//! 5. manifest.advance   票据在手才允许推进水位（CAS，期望值 = 本轮读到的旧值）
+//! 3. manifest_log::persist 写 0x31（协调区快照：段已发布、水位还是旧值）
+//! 4. record_manifest    写 0x31 —— 段证据（ADR-0013 决策 3）
+//! 5. manifest.advance   票据在手才允许推进水位（CAS）；推进成功后再 persist 一次
 //! ```
+//!
+//! 第 3 步记的是「段已发布、水位还没推进」的那一版清单，重启时据此还原：
+//! 先段后水位在重启之后依然成立。
 //!
 //! 第 4 步必须在第 5 步之前，且第 5 步只接受 [`Advance`](super::manifest::Advance) 票据——「水位已推进但段
 //! 缺失」在这段代码里没有写法（06 §6.1 A5）。CAS 失败（另一个追赶者先推进了水位）
@@ -108,6 +111,22 @@ pub fn catch_up(
     limits: CatchUpLimits,
     rate: &mut ChangeRate,
 ) -> Result<MaintenanceReport, SealError> {
+    catch_up_observed(kind, host, wal, manifest, spec, limits, rate, |_| {})
+}
+
+/// 同 [`catch_up`]，但每发布一批段就调用一次 `on_publish`（参数是该批的
+/// [`SealedSegment`]）——部署层用它在批次边界落盘段文件（08 §2.3 第 2/4 步）。
+#[allow(clippy::too_many_arguments)]
+pub fn catch_up_observed(
+    kind: &dyn IndexKind,
+    host: &dyn MaintenanceHost,
+    wal: &dyn crate::wal::WalManager,
+    manifest: &mut SegmentManifest,
+    spec: &ChangeBatchSpec,
+    limits: CatchUpLimits,
+    rate: &mut ChangeRate,
+    mut on_publish: impl FnMut(&SealedSegment),
+) -> Result<MaintenanceReport, SealError> {
     let CatchUpLimits { to, max_batches } = limits;
     let mut report = MaintenanceReport::default();
     for _ in 0..max_batches {
@@ -143,6 +162,9 @@ pub fn catch_up(
                 &changes,
                 &mut report,
             )?;
+            if let Some(sealed) = report.segments.last() {
+                on_publish(sealed);
+            }
             report.changes += changes.len();
             rate.observe(from, to_lsn, changes.len());
         }
@@ -172,19 +194,24 @@ fn publish_batch(
     report: &mut MaintenanceReport,
 ) -> Result<(), SealError> {
     let sealed = build_segment(kind, host, 1, from, to, changes)?;
+    let mut next = manifest.clone();
+    let ticket = next.publish(sealed.published());
+    // 持久化在推进之前：WAL 里存的是「段已发布、水位还是旧值」的那一版清单
+    // （崩溃在这一步与下一步之间时，重启后从旧水位重扫，重复应用是幂等的）。
+    super::manifest_log::persist(wal, &next)?;
     record_manifest(wal, &sealed, manifest.txn_watermark)?;
-    let ticket = manifest.publish(sealed.published());
     // 06 §3.1：`tx_w` = 出现过的 xid 里「非终态」的最小者减一。
     let txn_watermark = next_txn_watermark(&xids_of(host, changes), |x| host.txn_status(x));
     let expected = manifest.watermark;
-    match manifest.advance(&ticket, expected, txn_watermark) {
-        Ok(()) => {}
+    if let Err(conflict) = next.advance(&ticket, expected, txn_watermark) {
         // 另一个追赶者先推进了水位：段已发布（幂等键保证不会重复），本轮放弃推进。
-        Err(conflict) => {
-            debug_assert_eq!(conflict.expected, expected);
-            report.cas_conflicts += 1;
-        }
+        debug_assert_eq!(conflict.expected, expected);
+        report.cas_conflicts += 1;
+    } else {
+        // 把推进后的水位也落盘：重启后的起点就是下一次发布的起点。
+        let _ = super::manifest_log::persist(wal, &next);
     }
+    *manifest = next;
     report.segments.push(sealed);
     Ok(())
 }

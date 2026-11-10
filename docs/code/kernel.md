@@ -92,6 +92,12 @@ trait ChangeFeed {
 }
 ```
 
+`object_watermark()` 就是 `WalManager::durable_lsn()`。它的口径（`src/wal/device.rs`）：
+
+- 本进程 flush 过 → 返回最近一次 `flush_upto` 覆盖到的位置；
+- 本进程没 flush 过（刚打开 / 刚重启）→ 返回**打开时恢复到的日志尾**。盘上已有的
+  字节本来就是持久的；返回初始值 0 会让重启后读不到任何派生记录。
+
 实现要点（`src/kernel/feed.rs`）：
 
 - 游标是**包含式起点**，永远是记录边界（`scan_from` 给出），调用方不得自行推算帧长。

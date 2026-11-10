@@ -44,6 +44,8 @@ struct WalState {
     /// 下一条记录的 LSN。
     next_lsn: u64,
     durable_lsn: u64,
+    /// 本进程打开后是否执行过 `flush_upto`（决定 [`DeviceWal::durable_lsn`] 的口径）。
+    flushed_since_open: bool,
     initialized: bool,
 }
 
@@ -71,6 +73,7 @@ impl DeviceWal {
                 append_offset: SEGMENT_HEADER_SIZE as u64,
                 next_lsn: 0,
                 durable_lsn: 0,
+                flushed_since_open: false,
                 initialized: false,
             }),
             min_required: AtomicU64::new(0),
@@ -331,11 +334,21 @@ impl WalManager for DeviceWal {
         // 当前段一次 fsync 覆盖本段全部追加；已滚动段在 roll 时已 flush。
         self.flush_segment(st.current_segment)?;
         st.durable_lsn = st.next_lsn;
+        st.flushed_since_open = true;
         Ok(())
     }
 
     fn durable_lsn(&self) -> Lsn {
-        Lsn(self.state.lock().unwrap().durable_lsn)
+        // 本进程是否 flush 过决定了「缓冲区里还有没有未持久字节」：
+        // - 是：上一轮 `flush_upto` 已把当时的全部字节刷过盘，之后写入的都是新字节；
+        // - 否：打开时恢复到的日志尾就是盘上已有的全部内容，没有新字节。
+        // 只返回状态里的值会在重启后把「盘上已有」读成「未持久」，派生记录永远读不回。
+        let st = self.state.lock().unwrap();
+        if st.flushed_since_open {
+            Lsn(st.durable_lsn)
+        } else {
+            Lsn(st.durable_lsn.max(st.next_lsn))
+        }
     }
 
     fn scan_from(&self, from: Lsn) -> KernelResult<WalScan> {

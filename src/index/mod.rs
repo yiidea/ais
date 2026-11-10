@@ -30,6 +30,7 @@ pub mod catchup;
 pub mod freshness;
 pub mod kind;
 pub mod manifest;
+pub mod manifest_log;
 pub mod reclaim;
 pub mod segment;
 pub mod tracker;
@@ -43,4 +44,4 @@ pub use kind::{EntryAction, EntryKey, EntryKind, IndexKind, MetaIndex, ObjectVie
 pub use manifest::{Advance, CasConflict, PublishedSegment, SegmentId, SegmentManifest};
 pub use reclaim::{reclaimable, Blocker, ReclaimVerdict};
 pub use segment::{IndexEntry, Segment};
-pub use tracker::{catch_up, CatchUpLimits, MaintenanceHost, MaintenanceReport};
+pub use tracker::{catch_up, catch_up_observed, CatchUpLimits, MaintenanceHost, MaintenanceReport};

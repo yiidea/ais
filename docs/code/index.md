@@ -17,6 +17,7 @@
 | Reclaimer | `reclaim.rs` | G1–G6 逐条目判定 |
 | Freshness | `freshness.rs` | 覆盖判定、代价模型、`tx_w` 推进规则 |
 | Tracker | `tracker.rs` | 把上面五个串成一轮追赶循环 |
+| ManifestLog | `manifest_log.rs` | 协调区落 WAL（0x31）与重启还原 |
 
 ## 2. 数据形态
 
@@ -58,8 +59,35 @@ pub struct SegmentManifest {
 - `advance` 是 CAS：`expected` 不等于当前 `watermark` 返回 `CasConflict`，水位只增不减。
 - `publish` 去重；先发布的段成为基线段。`discard_orphans` 给出「不在清单」的段供回收。
 
-> 当前协调区只在内存里（引擎持有一份）；按 ADR-0013 落 WAL 是下一步，见
-> [README 下一步](README.md)与 [usage.md](usage.md#已知限制)。
+### 3.1 持久化（`manifest_log.rs`）
+
+协调区每发布一批段写**两次** `0x31`，并在推进后再写一次，记的分别是：
+
+```text
+persist(wal, &manifest) -> KernelResult<Lsn>              // 经 append_derived，DerivedFamily::Index
+restore(wal, index_id) -> KernelResult<Option<SegmentManifest>>
+```
+
+| 写入时机 | 记录里的水位 | 崩溃在这里之后 |
+|---|---|---|
+| 段已发布、水位未推进 | 发布前的旧水位 | 重启后从旧水位重扫，重复应用（幂等） |
+| `advance` 之后 | 推进后的水位 | 重启后的起点就是下一次发布的起点 |
+
+- 记录体复用 ADR-0013 的 `IndexManifest { index_id, segment_id, from_lsn, to_lsn,
+  watermark_xid, watermark_lsn }`。快照记录的 `segment_id` 全零、三个 LSN 字段都等于
+  **水位本身**；builder 的证据记录 `from_lsn` 是段起点。`restore` 据此区分两类记录，
+  不引入新的记录类型。
+- `restore` 只认 `durable_lsn` 之前的记录，取该索引最新一条；没有记录返回 `None`，
+  调用方从空清单开始。记录体不自洽（三个 LSN 不相等）返回 `Internal(InvariantViolation)`。
+- 还原结果只含两个水位与 `baseline_segment_id`，**不含段列表**。
+- 记录**不是发布事实**（ADR-0013 决策 3）：内核不解析它，恢复期不 redo。它只让
+  **索引层自己**在重启后接着追，见 [usage.md](usage.md#让查询带上完整性标记)。
+- 持久化要等下一次 WAL flush。引擎在 `catch_up_index` 末尾主动 flush 一次，让刚写的
+  快照成为可还原的水位；在它之前掉电，WAL 里最多回到上一条已持久的记录——水位落后，
+  不会越界。
+
+> `durable_lsn` 在**本进程没 flush 过**时取日志尾（打开时恢复到的位置）：盘上已有的
+> 字节本来就是持久的。修正前它取打开时的初始值，重启后读不到任何派生记录。
 
 ## 4. 构建（`builder.rs`、`kind.rs`）
 
@@ -89,10 +117,18 @@ let report = catch_up(&kind, &kernel as &dyn MaintenanceHost, kernel.wal(),
 ```text
 1. catchup::step        读一批已提交变更（撞屏障 → Blocked，返回本批 + blocked=true）
 2. build_segment        建段
-3. record_manifest      写 0x31 证据（ADR-0013 决策 3）
-4. manifest.publish     进清单，拿到 Advance 票据
-5. manifest.advance     CAS 推进 watermark / txn_watermark
+3. persist              协调区快照（发布后、推进前）——`manifest_log::persist`
+4. record_manifest      段证据——`record_manifest`
+5. advance              CAS 推进 watermark / txn_watermark，成功后再 persist 一次
 ```
+
+第 3–5 步在代码里是：`clone` 清单 → `publish` 得到票据 → `persist` 写快照 →
+`record_manifest` 写证据 → `advance`（CAS）→ 成功则再 `persist` 一次。任何一步崩掉，
+WAL 里都不会出现「水位已推进、段却没记下」的状态。
+
+`catch_up_observed` 与 `catch_up` 相同，额外在每批发布后回调 `on_publish(&SealedSegment)`：
+部署层用它把段字节落盘并原子 rename（08 §2.3 第 2/4 步）。本仓库的 `engine` 只
+在内存里消费段，不调用它。
 
 `MaintenanceReport` 给出：`segments`、`changes`、`advanced_to`、`txn_watermark`、`blocked`、
 `rebuild_required`、`cas_conflicts`。
@@ -102,6 +138,7 @@ let report = catch_up(&kind, &kernel as &dyn MaintenanceHost, kernel.wal(),
 - **屏障路径**：`Blocked { resume_at }` 时会用 `scan_changes(from, resume_at)` 把屏障之前
   已提交的变更取出来照常发布，然后结束本轮（不丢已提交的写入）。
 - **批次尾**：有 `next` 用 `next`；没有 `next` 用 `object_watermark().min(to).max(from)`。
+  注意 `object_watermark()` 是**本批发布前**读到的持久水位，批次尾因此不会越过它。
   **不能**直接用调用方给的 `to`——`to` 可能是 `Lsn::MAX`，越过持久水位就会把没落盘的记录
   算作已消费。
 - <a id="must-rebuild"></a>**截断**：`catchup::step` 遇到 `from < min_required_lsn` 返回
@@ -168,7 +205,12 @@ G1–G6 逐条目判定（含基线段与继任者、逐条目快照可见性、
 <a id="已知差距"></a>
 ## 8. 已知差距
 
-- 协调区不持久化；进程重启后索引从空清单重建（引擎 `rebuild_indexes` 重建的是向量 /
-  文档缓存，不是 `SegmentManifest`）。
+- 协调区还原出来的清单**不含段列表**：对追赶与覆盖判定够用（只用两个水位），
+  段回收要用完整列表时得另外重建。
+- 每批写两次快照记录，WAL 里 `0x31` 的数量是段数的两倍；T4 判定读的是全部 `0x31`，
+  快照记录的 `segment_id` 全零不对应任何段，不应计入。
+- `persist` 不 fsync：重启后可能回退到上一条已持久的快照（安全，但会重扫一段）。
+- 引擎不落盘段文件：`Engine` 的内存段在重启后不还原，重启时 `with_index` 只恢复
+  清单，若再需要段材料要走全量重建。
 - 追赶在调用线程同步执行，没有后台线程与独立 I/O 优先级。
 - 只有 `MetaIndex` 一种 `IndexKind`；向量索引仍是引擎内的暴力扫描，不是索引段。
