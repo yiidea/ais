@@ -38,7 +38,7 @@ xid 侧的覆盖判定（正确性口径）见 §3.1。
 
 ### 1.2 索引不属于内核
 
-[04 §1](04-kernel-interfaces.md) 把「索引网格」明确划在上层：「上层 Intent 执行器、索引网格、Agent 运行时都可以演进，唯独内核的接口一旦被依赖，就不能再随手改」。冻结清单（[04 §1.2](04-kernel-interfaces.md) 的 F1–F15）与实现顺序表（[04 §15](04-kernel-interfaces.md)）里**都没有索引管理器**。
+[04 §1](04-kernel-interfaces.md) 把「索引网格」明确划在上层：「上层 Intent 执行器、索引网格、Agent 运行时都可以演进，唯独内核的接口一旦被依赖，就不能再随手改」。冻结清单（[04 §1.2](04-kernel-interfaces.md) 的 F1–F21）与实现顺序表（[04 §15](04-kernel-interfaces.md)）里**都没有索引管理器**。
 
 这是有意的，不是遗漏：
 
@@ -85,12 +85,20 @@ pub trait ChangeFeed {
 
 **内容从哪里来**：`scan_changes` 只给元数据。向量索引需要的 embedding 在**内核 WAL 里没有**（[03 §2.4](03-consistency-kernel.md) 明确「Payload 不进入 WAL」），因此构建器必须再走一次逻辑对象读路径：`ObjectManager::resolve_version(id, snap)` 解析出可见版本，再 `ObjectManager::read_version(id, ver)` 读出 `ObjectView`（含 payload）——两者都在 [04 §3.2](04-kernel-interfaces.md) 冻结。
 
-**与冻结清单的关系（必须写明，否则实现者会按「已冻结」对待）**：
+**与冻结清单的关系（必须写明，否则实现者会按「未冻结」对待）**：
 
-- `ChangeFeed` / `ObjectChange` / `ObjectMeta` **不在 [04 §1.2](04-kernel-interfaces.md) 的冻结清单 F1–F15 里**，也**不在 §14.1 规则 3 的封闭 trait 清单里**。本文给出的是**提案**，不是已冻结的契约。
-- 它必须遵守 [04 §14.1 规则 1](../chatgpt/04-kernel-interfaces.md)：对外暴露的 trait 全部只接受逻辑标识符。上面的定义已经做到——`ObjectMeta` 不含 `StorageRef`，`scan_changes` / `scan_objects` 都按逻辑标识符取数，不泄漏物理位置。
-- 它还需要一条**补充 ADR** 才能进入冻结清单：决定它是否纳入 §14.1 规则 3 的封闭列表（若纳入，外部无法实现，只能由内核提供实现）、它与 `WalManager` 的调用方向，以及 `scan_changes` 的分页形态（当前一次返回整个区间，缺口很大时会撑爆内存——第一版应改成分段拉取）。这条 ADR 是本文的落地前置条件。
-- `IndexId` 目前**不在** [04 §1.2](04-kernel-interfaces.md) F1 的冻结标识符清单里（那里只有 `ObjectId` / `VersionId` / `TransactionId` / `Lsn` / `ExtentId` / `MappingId` / `PhysicalExtentId` / `SnapshotId`），虽然 `IdKind` 有 `Index` 变体、架构层也已经用了它。补进 F1 同样需要 ADR。
+- `ChangeFeed` / `ObjectChange` / `ObjectMeta` **已由 [ADR-0012](../adr/0012-changefeed-freeze.md) 冻结为 F16**（[04 §1.2](04-kernel-interfaces.md)），并纳入 §14.1 规则 3 的封闭 trait 清单——外部不可实现，只能由内核提供实现。`ObjectChange` / `ObjectMeta` 是 F16 签名的一部分，随 F16 一起冻结。
+- 它遵守 [04 §14.1 规则 1](../chatgpt/04-kernel-interfaces.md)：对外暴露的 trait 全部只接受逻辑标识符。上面的定义已经做到——`ObjectMeta` 不含 `StorageRef`，`scan_changes` / `scan_objects` 都按逻辑标识符取数，不泄漏物理位置。
+- 调用方向与分页形态也已冻结：`ChangeFeed → WalManager`（禁止反向）；`scan_changes` 的入参带 `ChangeBatchSpec`、返回 `ChangeBatch`（有界批 + `next_cursor` + `blocked_by_pending_txn`），游标不越过未决事务屏障、空批不得前进。详见 [ADR-0012](../adr/0012-changefeed-freeze.md) 决策 2–3。
+- `IndexId` 已由 [ADR-0012](../adr/0012-changefeed-freeze.md) 决策 4 补进 [04 §1.2](04-kernel-interfaces.md) 的 F1：16 字节、由协调区分配，内核只承载标识符、不解释其内容——这不会把索引管理器拉进内核，本文 §1.2 的结论不变。
+
+**MVP 实现的三个落点**（形状冻结、细节归实现）：
+
+1. `ObjectIdIter` 在本仓库落成 `Vec<ObjectId>`：全量重建路径本来就要把所有可见对象读一遍，materialize 一个 id 列表不改变任何语义；将来要改成有界迭代器属于实现演进，不是签名变更。
+2. **一次创建只有一条 `Created`**：`ObjectCreate` 之后紧跟的首个 `ObjectVersion`（`old_version = 0`）是同一件事，内核把它折叠进 `Created.version`，不再单独报 `Versioned`。不折叠的话，每个新建对象都会在索引里先 insert 一次、再「删除不存在的旧版本 + insert」一次（§2.3 动作表）。
+3. **游标是「下一条未消费记录」的 LSN**（包含式起点），边界由 `WalManager::scan_from` 给出的记录头决定。调用方不得自行用 `lsn + 帧长` 推算——帧头 36 字节、body 按 8 字节对齐，算错一次就会落在帧内部。
+
+`LiveSnapshotSource`（F17，§5.3 的 G3/G4）同样已落成 `src/kernel/live.rs`：存活快照 = 持有 `LiveSnapshotHandle` 的快照（事务开始时登记、提交/中止或句柄丢弃时注销），`visible` 直接调用内核唯一的 `version_visible`，`EntryVisibility` 只有 `created_by_xid` / `deleted_by_xid` 两个字段——没有 LSN 与 `VersionId` 可用，所以 A1 断言（不读 LSN、不读版本号）由类型保证。
 
 ### 1.3 「滞后」是连续的量，不是一个布尔值
 
@@ -558,7 +566,7 @@ pub enum IndexCoverage {
 本文的验收用例分两层落地：
 
 - **L1（索引层）**：索引构建器自身的纯逻辑（段生成、幂等键去重、发布顺序）。[05](05-kernel-test-harness.md) §5.1 的 L1 模块表目前只覆盖内核模块（ObjectManager…IoExecutor），**没有索引模块**；05 也没有假协调区、没有假索引存储、没有索引层的崩溃重启模型。这部分夹具需要新增。
-- **L2（崩溃层）**：段 fsync 与水位推进之间崩溃。需要在 [05 §3.2](05-kernel-test-harness.md) 的 site 目录新增两个 site：`index.segment.sealed`（段 fsync 完成）与 `index.watermark.published`（协调区水位推进完成）。这两个 site 对应**设备写操作**，因此属于 05 §3.1.1 的**设备级**——打点方在索引层，写操作仍然经过内核的 `IoExecutor`，所以它们落在 [05 §11 第 1 项](05-kernel-test-harness.md) 待定的「`IoExecutor` 携带 site 标签」机制之下：一旦该机制定下来，索引层也能给自己的写操作打标签。
+- **L2（崩溃层）**：段 fsync 与水位推进之间崩溃。需要在 [05 §3.2](05-kernel-test-harness.md) 的 site 目录新增两个 site：`index.segment.sealed`（段 fsync 完成）与 `index.watermark.published`（协调区水位推进完成）。这两个 site 对应**设备写操作**，因此属于 05 §3.1.1 的**设备级**——打点方在索引层，写操作仍然经过内核的 `IoExecutor`。该机制已由 [ADR-0011](../adr/0011-device-op-site-tagging.md) 定下：site 标签是 `DeviceOp` 的字段，由调用方在提交时声明、`IoExecutor` 在两处触发点透传，索引层因此可以给自己的写操作打标签。
 - 但 **05 §5.1 的 L1 模块表与 §3.5 的 `FaultSite` 枚举（要求穷尽 `match`）都要同步扩展**，否则新增 site 未登记即编译失败（05 §8 的编译期校验）。这一步是 05 与本文的接口改动，不是本文单方面能决定的。
 - 「段先于水位」这条顺序保证由**索引层自己的逻辑**提供，不由 `IoExecutor` 提供——因此对应的断言是「崩溃后不存在『水位已推进但段缺失』」，而不是「两个 site 的相对顺序」。
 
@@ -580,11 +588,16 @@ pub enum IndexCoverage {
 
 ## 八、下一步
 
-本文把索引追赶定到了可编码的粒度。还剩四处，都需要 ADR：
+本文把索引追赶定到了可编码的粒度。原本还剩四处需要 ADR，**现已全部落定**：
 
-1. **`ChangeFeed` 纳入内核冻结清单的 ADR**（§1.2）：决定它是否进 [04 §14.1 规则 3](../chatgpt/04-kernel-interfaces.md) 的封闭列表、与 `WalManager` 的调用方向、`scan_changes` 的分页形态，以及 `IndexId` 是否补进 F1。
-2. **索引层写入内核 WAL 的 ADR**（§2.4 步骤 2）：`IndexManifest`（`0x31`）是一条新的内核对外写入面，[04 §12.1](04-kernel-interfaces.md) 的模块调用图里没有这条边；同时需要补一条「非事务记录何时可被 WAL 截断」的规则（§5.1）。
-3. **两本日志的可见性模型对齐**（§1.4）：SemLog 的 epoch 可见性与内核的 xid 可见性目前没有映射关系，需要确定以哪一套为准，以及索引追赶的权威输入是哪一本。
-4. **索引段回收的判定条件**（§5.3 指出它不能复用对象的六条件）。需要逐条目的快照可见性判定 + 基线段保护。做法上要么在索引层实现一个独立的段回收器，要么把它作为 `Reclaimer` 的一个受限子职责——后者会改动 [04 §10](04-kernel-interfaces.md) 的冻结契约，需要一条 ADR。
+1. **`ChangeFeed` 纳入内核冻结清单**（§1.2）→ 已完成，见 [ADR-0012](../adr/0012-changefeed-freeze.md)。决定：`ChangeFeed` 进冻结清单（F16）并纳入 [04 §14.1 规则 3](../chatgpt/04-kernel-interfaces.md) 的封闭列表；调用方向为 `ChangeFeed → WalManager`（禁止反向）；`scan_changes` 改为**游标 + 有界分页**，游标不越过未决事务屏障、空批不得前进；`IndexId` 补进 F1（冻结标识符语义，但不把索引管理器拉进内核，本文 §1.2 的结论不变）。
+2. **索引层写入内核 WAL**（§2.4 步骤 2）→ 已完成，见 [ADR-0013](../adr/0013-index-manifest-in-wal.md)。决定：新增非事务入口 `WalManager::append_derived(rec, family)` 并按记录族鉴权；`IndexManifest`（`0x31`）是**派生事实，不是提交事实**；WAL 截断补第四条件 **T4**（非事务记录不阻塞 `min_required_lsn`，只阻塞段文件的物理删除）；恢复期 `0x31` 不参与 redo，只做与协调区的只读交叉核对。
+3. **两本日志的可见性模型对齐**（§1.4）→ 已完成，见 [ADR-0014](../adr/0014-semlog-epoch-vs-xid-visibility.md)。决定：**「是否已提交」只由内核 xid 判定**，「能否看见」由因果快照判定，两者是「存在」与「范围」的关系而非两套真值；SemLog 追加固定在 `TxnCommit` 持久**之后**（反向会产生不可撤销的幽灵事实）；三个同名 `epoch` 分别改名为 `PlacementEpoch` / `sem_epoch` / `causal_token`；本文的权威输入是内核 WAL，**不改**。
+4. **索引段回收的判定条件**（§5.3）→ 已完成，见 [ADR-0015](../adr/0015-index-segment-reclamation.md)。决定：回收器归索引层，**不改** [04 §10](04-kernel-interfaces.md) 的 `Reclaimer` 契约；判定为 G1–G6 六条合取（含基线段及其继任者条件、逐条目快照可见性、墓碑、引用集、先摘链后删文件）；不做部分回收，部分保留走合并；内核新增 `LiveSnapshotSource`（F17）提供唯一的可见性实现，禁止索引层自写判定。
 
 另有 [03 §12 第 3 项](03-consistency-kernel.md)（硬件资源管理的实现细节）会直接影响本文的代价模型：`c_scan` 与 `c_point` 的取值来自硬件实测，代价模型参数化必须与硬件 Profile 打通。 → 已完成，见 [07-hardware-resource-management.md](07-hardware-resource-management.md)；该文 §2.7 给出这两个量的定义（它们不是新参数，而是该文 `L` / `T` 的组合，以微秒为单位；点查只取回**一个逻辑 extent**，扫描读完全部 extent——两者的差距是本文 §3.2 的 A / B 策略可区分的前提），§7.2 的 B7 是这两个数的**唯一实测来源**（设备取数与缓存命中各一组），§7.3 要求两处引用同一份来源。
+
+**本文因此产生的、仍需实现侧对齐的两处**（不是新的设计问题）：
+
+- §6.3 说的「`05` 的 L1 模块表与 `FaultSite` 枚举要加索引模块与两个索引层 site」——site 的承载机制已由 [ADR-0011](../adr/0011-device-op-site-tagging.md) 定为 `DeviceSite` 枚举，两个索引层 site 已列入其中；`05` 的模块表补索引构建器仍是夹具侧的具体工作。
+- §2.5 的幂等键与 §5.1 的「未发布的段一律作废」在 [ADR-0013](../adr/0013-index-manifest-in-wal.md) 之后多了一条可核对路径（`0x31` 与协调区交叉核对），但结论不变：协调区仍是权威。

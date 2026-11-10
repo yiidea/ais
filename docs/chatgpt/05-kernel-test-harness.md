@@ -132,7 +132,7 @@ site 分两类，**不可混用同一机制**：
 
 因此：
 
-- **设备级 site 由 `IoExecutor` 承载**：`submit_and_wait` 提交的操作需要携带 site 标签（或 `DeviceOp` 增加一个 `site` 字段）。这是对 [04 §6.3](04-kernel-interfaces.md) trait 形状的一个补充约束，需要一条 ADR（见 §11 第 1 项）。
+- **设备级 site 由 `IoExecutor` 承载**：`submit_and_wait` 提交的操作需要携带 site 标签（或 `DeviceOp` 增加一个 `site` 字段）。这是对 [04 §6.3](04-kernel-interfaces.md) trait 形状的一个补充约束，需要一条 ADR（见 §11 第 1 项）。 → 已定：标签放在 `DeviceOp` 上，取值为 `DeviceSite` 枚举，见 [ADR-0011](../adr/0011-device-op-site-tagging.md) 与 [04 §6.3 I6](04-kernel-interfaces.md)。
 - **内核级 site 在模块内显式打点**，与设备路径无关，不要求与 I/O 顺序对齐。
 
 ### 3.2 语义 site 目录
@@ -228,7 +228,7 @@ pub struct FaultInjector {
 
 ### 3.5 辅助类型
 
-上文的类型里，有几个是本文新引入的、需要在此定名（其余如 `DeviceId` / `DurabilityLevel` / `IoOp` 已在 [04](04-kernel-interfaces.md) 冻结；`DeviceHealth` 也在 04 出现，但**只作为 `health()` 的返回类型、从未定义取值**，因此同样需要定名——见 [07 §2.3](07-hardware-resource-management.md)）：
+上文的类型里，有几个是本文新引入的、需要在此定名（其余如 `DeviceId` / `DurabilityLevel` / `IoOp` 已在 [04](04-kernel-interfaces.md) 冻结；`DeviceHealth` 当时只在 04 作为 `health()` 的返回类型出现、未定义取值，现已由 [ADR-0016](../adr/0016-resource-types-freeze.md) 冻结为 F18，本文直接引用其取值集合）：
 
 | 类型 | 定义 | 用途 |
 |---|---|---|
@@ -593,6 +593,8 @@ CI 提供 `cargo test -- --seed 12345 --workload wal_crash --fault wal.flushed` 
 
 剩下的设计工作有三项：
 
-1. **把设备级 site 的打点机制回填到 [04 §6.3](04-kernel-interfaces.md) 的 `IoExecutor` 契约里。** §3.1.1 已经把 site 分成两级：**设备级** site 需要 `IoExecutor` 能携带 site 标签（或 `DeviceOp` 增加 `site` 字段），**内核级** site 在模块内显式打点、不进设备路径。剩下要定的是设备级那一半的具体形状——标签放在 `DeviceOp` 上还是放在 `submit_and_wait` 的参数上，两者的公共 API 影响不同；以及 `submit_batch_and_wait` 的批量场景怎么给每个操作打标签。这是对 [04](04-kernel-interfaces.md) 冻结契约的补充，需要一条 ADR。
+1. **把设备级 site 的打点机制回填到 [04 §6.3](04-kernel-interfaces.md) 的 `IoExecutor` 契约里。** → 已完成，见 [ADR-0011](../adr/0011-device-op-site-tagging.md)、[04 §6.3 I6](04-kernel-interfaces.md)。决定：site 标签放在 **`DeviceOp`** 上（`DeviceSite` 枚举），**不放** `submit_and_wait` 的参数上——批量接口因此不需要平行的标签数组，长度不一致不可表达；触发点固定在 `IoExecutor` 内的 `before`（出队后、执行前）与 `after`（确认成功、未回填前）两点；`DeviceSite::Untagged` 在注入规则上出现即让测试失败，把「漏打标签」从「测不到」变成「立刻红」。
+
+   **对本文的一处修正**：§3.1.1 原文写「设备级 site 由 `IoExecutor` 承载」。准确的说法是**由 `IoExecutor` 承载标签、由调用方声明标签**——`IoExecutor` 只负责在正确的设备操作边界上停下来，不从 `PhysicalLocation` 推断 site。[Rust MVP](../../src/) 的 `FaultDevice::site_for()` 按地址区间推断 site，正是本 ADR 要求删除的做法：布局一改，注入点漂移而测试仍然通过。
 2. **索引恢复的增量算法**（[03 §12 第 2 项](03-consistency-kernel.md)）——「日志水位 → 索引构建水位」的追赶策略，以及「滞后索引的查询回退路径」的代价估计。 → 已完成，见 [06-index-recovery.md](06-index-recovery.md)。该文的 §6.3 要求本文件的夹具扩展一层：L1 模块表与 §3.5 的 `FaultSite` 枚举都要加入索引构建器与两个索引层 site。
 3. **硬件资源管理的实现细节**（[03 §12 第 3 项](03-consistency-kernel.md)）——参数化 Placement 代价模型、定义 NUMA 亲和调度与 io_uring 队列深度的切换判据。 → 已完成，见 [07-hardware-resource-management.md](07-hardware-resource-management.md)。该文 §7.1 的验收用例需要本文件的夹具支持四件事：假设备能上报不同的队列深度上限与对齐要求（§2.3 的降级模型是否够用需要复核）、能区分三个后端的耐久语义以做掉电对拍、在设备级 site 上定位「队列满 → `Retryable(Backpressure)`」这一路径、以及让用例能设置**域侧的 QD 预算**（`qd_usable` / `qd_flush_reserve`，见该文 §4.2）——否则 `qd_flush_slot_reserved` 无法复现。

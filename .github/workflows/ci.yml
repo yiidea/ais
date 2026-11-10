@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # 让 CI 的告警在 PR 上以注释形式出现是可选项；这里统一用编译器输出，不引入额外 action。
+  RUSTFLAGS: -D warnings
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # 两种特性组合都要过：发布构建里 testing 模块不存在（05 §6 约束 4），
+      # 只在 --all-features 下编译会漏掉默认构建的告警。
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+  # 测试矩阵：默认构建（50 项）+ test-harness（+10 项崩溃恢复），
+  # 外加 rustdoc 的 --cfg docsrs，保证文档链接在发布文档下也能解析。
+  test:
+    name: test (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ["", "--all-features"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --all-targets --locked ${{ matrix.features }}
+      - run: cargo test --all-targets --locked ${{ matrix.features }}
+
+  docs:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --no-deps --all-features --locked
+
+  # 零外部依赖 + 离线构建是 README §6 明确的设计约束，这里把「离线能过」变成硬门禁。
+  offline:
+    name: offline build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --all-targets --all-features --locked --offline
+
+  # 可执行示例就是文档的一部分：跑不起来等于文档在骗人。
+  demo:
+    name: demo + quickstart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo run --locked --bin ains-demo
+      - run: cargo run --locked --example quickstart
+
+  msrv:
+    name: msrv (1.75)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.75.0
+      - uses: Swatinem/rust-cache@v2
+      # 旧工具链不跑 clippy（口径随版本变化），只验证「能编译、能测」。
+      - run: cargo build --all-targets --locked
+      - run: cargo test --all-features --locked
